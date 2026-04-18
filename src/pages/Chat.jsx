@@ -1493,6 +1493,8 @@ function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate, onClea
             </motion.div>
           </div>
         )}
+      </AnimatePresence>
+
       {/* --- Message Info Modal --- */}
       <AnimatePresence>
         {msgInfoData && (
