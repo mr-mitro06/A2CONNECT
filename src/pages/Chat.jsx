@@ -287,11 +287,17 @@ export default function Chat() {
     setMessages(prev => [...prev, optimisticMsg]);
     setTimeout(scrollToBottom, 50);
 
-    const fileName = `${Date.now()}_${user.id}_${file.name.replace(/\s+/g, '_')}`;
-    const { data, error } = await supabase.storage.from('media').upload(fileName, file, { upsert: false });
+    const fileName = `${Date.now()}_${user.id}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const { data, error } = await supabase.storage.from('media').upload(fileName, file, { upsert: true, contentType: file.type });
     
     if (!error && data) {
       const publicUrl = supabase.storage.from('media').getPublicUrl(fileName).data.publicUrl;
+      if (!publicUrl) {
+        console.error('Could not get public URL. Ensure the media bucket is set to PUBLIC in Supabase dashboard.');
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: 'error', content: 'Upload failed: bucket not public' } : m));
+        setIsUploadingMedia(false);
+        return;
+      }
       const encryptedUrl = encryptMessage(publicUrl);
       
       const dbPayload = {
@@ -303,10 +309,16 @@ export default function Chat() {
         status: 'sent'
       };
       
-      await supabase.from('messages').insert([dbPayload]);
-      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: 'sent', content: publicUrl } : m));
+      const { error: insertError } = await supabase.from('messages').insert([dbPayload]);
+      if (insertError) {
+        console.error('DB insert failed', insertError);
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: 'error' } : m));
+      } else {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: 'sent', content: publicUrl } : m));
+      }
     } else {
       console.error('Upload failed', error);
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: 'error', content: `Upload failed: ${error?.message}` } : m));
     }
     
     setIsUploadingMedia(false);
