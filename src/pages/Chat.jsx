@@ -642,6 +642,7 @@ export default function Chat() {
               <div className="flex items-center gap-2">
                 <button onClick={() => setSearchMode(true)} className="icon-btn text-white/60 hover:text-white"><Search className="w-5 h-5" /></button>
                 <button className="icon-btn"><Phone className="w-5 h-5 text-white/70" /></button>
+                <button className="icon-btn md:hidden" onClick={() => setShowSettings(true)}><Settings className="w-5 h-5 text-white/70" /></button>
                 <button className="icon-btn md:hidden" onClick={logout}><LogOut className="w-5 h-5 text-red-500/80" /></button>
               </div>
             </>

@@ -1,4 +1,4 @@
--- Run this script in the Supabase SQL Editor to set up the ShadowTalk Database
+-- Run this script in the Supabase SQL Editor to set up the A2Connect Database
 
 -- 1. Create Users Table
 CREATE TABLE IF NOT EXISTS public.users (
@@ -66,12 +66,18 @@ BEGIN
 END $$;
 
 -- 5. Storage Configuration (Bucket: media)
--- Run this in your Supabase SQL Editor to match the screenshot configuration
-/*
-INSERT INTO storage.buckets (id, name, public) VALUES ('media', 'media', true) ON CONFLICT (id) DO NOTHING;
+-- This creates the bucket and allows full access to authenticated/anon users for media sharing
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('media', 'media', true) 
+ON CONFLICT (id) DO NOTHING;
 
-CREATE POLICY "Full access to media bucket"
-ON storage.objects FOR ALL
-USING ( bucket_id = 'media' )
-WITH CHECK ( bucket_id = 'media' );
-*/
+-- Storage Policies
+DO $$ 
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Full access to media bucket' AND tablename = 'objects') THEN
+    CREATE POLICY "Full access to media bucket"
+    ON storage.objects FOR ALL
+    USING ( bucket_id = 'media' )
+    WITH CHECK ( bucket_id = 'media' );
+  END IF;
+END $$;
