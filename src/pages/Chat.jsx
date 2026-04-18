@@ -13,7 +13,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
   LogOut, Send, Mic, Phone, X, Reply, Paperclip, Loader2,
-  Trash2, Smile, Search, ArrowDownToLine, File, Settings, Upload, ChevronDown, Calendar, MoreVertical, Pin, Star
+  Trash2, Smile, Search, ArrowDownToLine, File, Settings, Upload, ChevronDown, Calendar, MoreVertical, Pin, Star,
+  Info, Clock, CheckCheck, Check, FileText, Image as ImageIcon, Video as VideoIcon, History
 } from 'lucide-react';
 
 // Inline icon replacements for icons not in this lucide version
@@ -105,6 +106,7 @@ export default function Chat() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [searchMode, setSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [msgInfoData, setMsgInfoData] = useState(null);
 
   const [isHideMode, setIsHideMode] = useState(false);
   const [partnerOnline, setPartnerOnline] = useState(false);
@@ -556,7 +558,8 @@ export default function Chat() {
     const m = contextMenu.msg;
     setContextMenu({ isOpen: false, position: null, msg: null });
     if (!m) return;
-    if (action === 'reply') { setReplyingTo(m); }
+    if (action === 'info') { setMsgInfoData(m); }
+    else if (action === 'reply') { setReplyingTo(m); }
     else if (action === 'copy') {
       const t = m.type === 'text' ? (typeof m.content === 'object' ? m.content.text : m.content) : (m.content?.url || m.content);
       navigator.clipboard.writeText(t || '');
@@ -1485,6 +1488,81 @@ function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate, onClea
                   className="text-red-400 font-bold text-[15px] hover:opacity-80 transition-opacity"
                 >
                   Delete
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      {/* --- Message Info Modal --- */}
+      <AnimatePresence>
+        {msgInfoData && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setMsgInfoData(null)}>
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-[360px] bg-[#1a2126] rounded-[2.5rem] border border-white/10 shadow-2xl overflow-hidden"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-emerald-500/10 rounded-2xl text-emerald-400">
+                    <Info className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-white font-semibold text-lg">Message Info</h3>
+                </div>
+                <button onClick={() => setMsgInfoData(null)} className="p-2 hover:bg-white/5 rounded-full text-white/40 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-6">
+                {/* Details Grid */}
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05] flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
+                      {msgInfoData.type === 'image' ? <ImageIcon className="w-5 h-5" /> : 
+                       msgInfoData.type === 'video' ? <VideoIcon className="w-5 h-5" /> :
+                       msgInfoData.type === 'audio' ? <Mic className="w-5 h-5" /> :
+                       <FileText className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <p className="text-white/40 text-xs font-medium uppercase tracking-wider mb-0.5">Type</p>
+                      <p className="text-white font-medium capitalize">{msgInfoData.type || 'text'}</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05] flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${msgInfoData.status === 'read' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/5 text-white/40'}`}>
+                      {msgInfoData.status === 'read' ? <CheckCheck className="w-5 h-5" /> : <Check className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <p className="text-white/40 text-xs font-medium uppercase tracking-wider mb-0.5">Status</p>
+                      <p className={`text-white font-medium capitalize ${msgInfoData.status === 'read' ? 'text-emerald-400' : ''}`}>{msgInfoData.status || 'Sent'}</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05] flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-white/40 text-xs font-medium uppercase tracking-wider mb-0.5">Sent At</p>
+                      <p className="text-white font-medium">{format(new Date(msgInfoData.created_at), 'PPP p')}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-6 bg-white/[0.02] border-t border-white/5 flex justify-center">
+                <button 
+                  onClick={() => setMsgInfoData(null)}
+                  className="w-full py-3.5 bg-white/[0.05] hover:bg-white/[0.08] text-white font-medium rounded-2xl transition-all border border-white/5"
+                >
+                  Close
                 </button>
               </div>
             </motion.div>
