@@ -176,10 +176,17 @@ export default function MessageContextMenu({ position, msg, isMe, isStarred, onC
                 )}
 
                 <div className="h-[1px] bg-white/[0.08] my-1 mx-4" />
+                
+                {isMe && (
+                  <button onClick={() => onAction('delete')} className="flex items-center gap-4 px-5 py-3 text-red-400 font-medium text-[15px] hover:bg-red-500/10 transition-colors group">
+                    <Trash2 className="w-5 h-5 opacity-60 group-hover:opacity-100 transition-opacity" />
+                    <span>Delete for everyone</span>
+                  </button>
+                )}
 
-                <button onClick={() => onAction('delete')} className="flex items-center gap-4 px-5 py-3 text-red-400 font-medium text-[15px] hover:bg-red-500/10 transition-colors group">
+                <button onClick={() => onAction('delete_for_me')} className="flex items-center gap-4 px-5 py-3 text-red-400 font-medium text-[15px] hover:bg-red-500/10 transition-colors group">
                   <Trash2 className="w-5 h-5 opacity-60 group-hover:opacity-100 transition-opacity" />
-                  <span>Delete</span>
+                  <span>Delete for me</span>
                 </button>
               </div>
             </>
