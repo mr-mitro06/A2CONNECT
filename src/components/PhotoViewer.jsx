@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Download } from 'lucide-react';
+import { X, ArrowDownToLine } from 'lucide-react';
 
 export default function PhotoViewer({ src, isOpen, onClose }) {
   if (!src) return null;
@@ -29,7 +29,7 @@ export default function PhotoViewer({ src, isOpen, onClose }) {
             className="absolute top-6 right-20 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
             title="Download Original"
           >
-            <Download className="w-6 h-6" />
+            <ArrowDownToLine className="w-6 h-6" />
           </a>
 
           <motion.img

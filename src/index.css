@@ -40,6 +40,18 @@
     @apply p-2 rounded-full hover:bg-white/10 active:bg-white/20 transition-all text-white/70 hover:text-white;
   }
 
+  .menu-item {
+    @apply w-full text-left px-5 py-3 hover:bg-white/5 text-white/90 text-[15px] font-medium transition-colors flex items-center justify-between;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Custom scrollbar for deep dark theme */
   ::-webkit-scrollbar {
     width: 6px;

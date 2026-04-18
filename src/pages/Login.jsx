@@ -37,7 +37,7 @@ export default function Login() {
           <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-6 shadow-xl">
             <Lock className="w-8 h-8 text-white/80" />
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white/90">ShadowTalk</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-white/90">A2Connect</h1>
           <p className="text-white/40 text-sm mt-2">Enter access code to continue</p>
         </div>
 

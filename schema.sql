@@ -4,6 +4,7 @@
 CREATE TABLE IF NOT EXISTS public.users (
   id text PRIMARY KEY,
   name text NOT NULL,
+  avatar_url text,
   online_status boolean DEFAULT false,
   last_seen timestamptz DEFAULT now()
 );
@@ -63,3 +64,14 @@ BEGIN
     CREATE POLICY "Allow anon all messages" ON public.messages FOR ALL USING (true);
   END IF;
 END $$;
+
+-- 5. Storage Configuration (Bucket: media)
+-- Run this in your Supabase SQL Editor to match the screenshot configuration
+/*
+INSERT INTO storage.buckets (id, name, public) VALUES ('media', 'media', true) ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "Full access to media bucket"
+ON storage.objects FOR ALL
+USING ( bucket_id = 'media' )
+WITH CHECK ( bucket_id = 'media' );
+*/
