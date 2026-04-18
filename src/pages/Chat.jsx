@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
   LogOut, Send, Mic, Phone, X, Reply, Paperclip, Loader2,
-  Trash2, Smile, Search, ArrowDownToLine, File, Settings, Upload, ChevronDown
+  Trash2, Smile, Search, ArrowDownToLine, File, Settings, Upload, ChevronDown, Calendar, MoreVertical, Pin, Star
 } from 'lucide-react';
 
 // Inline icon replacements for icons not in this lucide version
@@ -41,15 +41,28 @@ const generateUUID = () => {
 
 const decryptMsg = (msg) => {
   const newMsg = { ...msg };
-  if (newMsg.type === 'text') {
-    const rawText = decryptMessage(newMsg.content);
-    try { newMsg.content = JSON.parse(rawText); }
-    catch { newMsg.content = { text: rawText }; }
-  } else if (['audio', 'image', 'video', 'file'].includes(newMsg.type)) {
-    try {
-      const dec = decryptMessage(newMsg.content);
-      newMsg.content = dec || newMsg.content;
-    } catch {}
+  try {
+    const rawDec = decryptMessage(newMsg.content);
+    if (!rawDec) return newMsg;
+
+    const dec = rawDec.trim();
+    
+    // Attempt to parse as JSON if it looks like an object/array
+    if ((dec.startsWith('{') && dec.endsWith('}')) || (dec.startsWith('[') && dec.endsWith(']'))) {
+      try {
+        newMsg.content = JSON.parse(dec);
+      } catch (parseErr) {
+        // Not valid JSON, treat as text
+        if (newMsg.type === 'text') newMsg.content = { text: dec };
+        else newMsg.content = dec;
+      }
+    } else {
+      // Plain text or legacy fallback
+      if (newMsg.type === 'text') newMsg.content = { text: dec };
+      else newMsg.content = dec;
+    }
+  } catch (e) {
+    console.error("Decryption failed for message:", newMsg.id, e);
   }
   return newMsg;
 };
@@ -88,14 +101,17 @@ export default function Chat() {
 
   const [contextMenu, setContextMenu] = useState({ isOpen: false, position: null, msg: null });
   const [showInputEmoji, setShowInputEmoji] = useState(false);
+  const [showStarredVault, setShowStarredVault] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [searchMode, setSearchMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [isHideMode, setIsHideMode] = useState(false);
   const [partnerOnline, setPartnerOnline] = useState(false);
   const [partnerTyping, setPartnerTyping] = useState(false);
   const [partnerLastSeen, setPartnerLastSeen] = useState(null);
   const [partnerAvatar, setPartnerAvatar] = useState(null);
-  const [hideModeType, setHideModeType] = useState('dino'); // 'terminal' or 'dino'
-
+  const [hideModeType, setHideModeType] = useState('dino');
 
 
   const [isRecording, setIsRecording] = useState(false);
@@ -108,14 +124,6 @@ export default function Chat() {
   const fileInputRef = useRef(null);
   const [viewedPhoto, setViewedPhoto] = useState(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-
-  const [searchMode, setSearchMode] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const [starredIds, setStarredIds] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(`stars_${user?.id}`) || '[]'); }
-    catch { return []; }
-  });
 
 
   const bottomRef = useRef(null);
@@ -132,10 +140,7 @@ export default function Chat() {
     localStorage.setItem(`draft_${user.id}`, newMessage);
   }, [newMessage, user.id]);
 
-  // Sync starred IDs
-  useEffect(() => {
-    localStorage.setItem(`stars_${user.id}`, JSON.stringify(starredIds));
-  }, [starredIds, user.id]);
+
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -278,17 +283,29 @@ export default function Chat() {
     };
   }, [user.id, partnerId, scrollToBottom]);
 
-  // Mark seen when messages rendered
+  // Mark seen when messages rendered - Optimistic Update
   useEffect(() => {
-    const undeliveredInView = messages.filter(
+    const unreadInView = messages.filter(
       m => m.receiver_id === user.id && (m.status === 'delivered' || m.status === 'sent')
     );
-    if (undeliveredInView.length > 0) {
+    if (unreadInView.length > 0) {
+      // 1. Instantly update local state so the "Unread" pill vanishes
+      setMessages(prev => prev.map(m => {
+        if (m.receiver_id === user.id && (m.status === 'delivered' || m.status === 'sent')) {
+          return { ...m, status: 'seen' };
+        }
+        return m;
+      }));
+
+      // 2. Clear the DB in the background
       supabase.from('messages')
         .update({ status: 'seen' })
-        .in('id', undeliveredInView.map(m => m.id));
+        .in('id', unreadInView.map(m => m.id))
+        .then(({ error }) => {
+          if (error) console.error('Error marking seen:', error);
+        });
     }
-  }, [messages, user.id]);
+  }, [messages.length, user.id]); // Optimized dependency
 
   const typingTimeoutRef = useRef(null);
   const isLocalTyping = useRef(false);
@@ -568,7 +585,59 @@ export default function Chat() {
       setTimeout(() => inputRef.current?.focus(), 50);
     }
     else if (action === 'star') {
-      setStarredIds(prev => prev.includes(m.id) ? prev.filter(id => id !== m.id) : [...prev, m.id]);
+      let sPayload = (typeof m.content === 'object' && m.content !== null) ? { ...m.content } : { text: m.content };
+      const isStarred = sPayload.is_starred;
+      
+      if (isStarred) delete sPayload.is_starred;
+      else sPayload.is_starred = true;
+
+      const enc = encryptMessage(JSON.stringify(sPayload));
+
+      // Optimistic Update
+      setMessages(prev => prev.map(x => x.id === m.id ? { ...x, content: sPayload } : x));
+      
+      await supabase.from('messages').update({ content: enc }).eq('id', m.id);
+    }
+    else if (action === 'pin' || action === 'unpin') {
+      // 1. Unpin existing messages locally and in DB (if any)
+      const curPinned = messages.find(m => (typeof m.content === 'object' && m.content?.is_pinned));
+      
+      if (curPinned) {
+        let pLoad = { ...curPinned.content };
+        delete pLoad.is_pinned;
+        const enc = encryptMessage(JSON.stringify(pLoad));
+        await supabase.from('messages').update({ content: enc }).eq('id', curPinned.id);
+      }
+
+      // 2. Set new pin if action was 'pin'
+      if (action === 'pin') {
+        let newPLoad = (typeof m.content === 'object' && m.content !== null) ? { ...m.content } : { text: m.content };
+        newPLoad.is_pinned = true;
+        const newEnc = encryptMessage(JSON.stringify(newPLoad));
+        
+        // Optimistic update
+        setMessages(prev => prev.map(x => {
+          if (x.id === m.id) return { ...x, content: newPLoad };
+          if (curPinned && x.id === curPinned.id) {
+            let p = { ...x.content };
+            delete p.is_pinned;
+            return { ...x, content: p };
+          }
+          return x;
+        }));
+
+        await supabase.from('messages').update({ content: newEnc }).eq('id', m.id);
+      } else {
+        // Just unpinning
+        setMessages(prev => prev.map(x => {
+          if (curPinned && x.id === curPinned.id) {
+            let p = { ...x.content };
+            delete p.is_pinned;
+            return { ...x, content: p };
+          }
+          return x;
+        }));
+      }
     }
     else if (action === 'react') {
       let pPayload = typeof m.content === 'object' ? { ...m.content } : { text: m.content };
@@ -642,7 +711,7 @@ export default function Chat() {
           position={contextMenu.position}
           msg={contextMenu.msg}
           isMe={contextMenu.msg.sender_id === user.id}
-          isStarred={starredIds.includes(contextMenu.msg.id)}
+          isStarred={typeof contextMenu.msg.content === 'object' && contextMenu.msg.content?.is_starred}
           onClose={() => setContextMenu({ isOpen: false, position: null, msg: null })}
           onAction={handleContextMenuAction}
         />
@@ -715,31 +784,169 @@ export default function Chat() {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="md:hidden">
-                  <Avatar src={user.avatar_url} name={user.name} size="w-8 h-8" textSize="text-xs" />
+              <div className="flex items-center gap-1 sm:gap-2">
+                {/* Desktop Icons */}
+                <div className="hidden sm:flex items-center gap-2">
+                  <button onClick={() => setSearchMode(true)} className="icon-btn text-white/40 hover:text-white"><Search className="w-5 h-5" /></button>
+                  <button className="icon-btn text-white/40 hover:text-white"><Phone className="w-5 h-5" /></button>
+                  <button 
+                    onClick={() => setShowStarredVault(true)}
+                    className="p-2.5 hover:bg-white/5 rounded-full text-white/40 hover:text-emerald-500 transition-all"
+                  >
+                    <StarIcon className="w-5 h-5" />
+                  </button>
+                  <button onClick={() => setShowSettings(true)} className="icon-btn text-white/40 hover:text-white"><Settings className="w-5 h-5" /></button>
+                  <button onClick={logout} className="icon-btn text-red-500/60 hover:text-red-500"><LogOut className="w-5 h-5" /></button>
                 </div>
-                <button onClick={() => setSearchMode(true)} className="icon-btn text-white/60 hover:text-white"><Search className="w-5 h-5" /></button>
-                <button className="icon-btn"><Phone className="w-5 h-5 text-white/70" /></button>
-                <button className="icon-btn md:hidden" onClick={() => setShowSettings(true)}><Settings className="w-5 h-5 text-white/70" /></button>
-                <button className="icon-btn md:hidden" onClick={logout}><LogOut className="w-5 h-5 text-red-500/80" /></button>
+
+                {/* Mobile 3-dot Menu */}
+                <div className="sm:hidden flex items-center gap-1">
+                  <Avatar src={user.avatar_url} name={user.name} size="w-8 h-8" online />
+                  <button 
+                    onClick={() => setShowMobileMenu(!showMobileMenu)}
+                    className={`p-2 rounded-full transition-all ${showMobileMenu ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'}`}
+                  >
+                    <MoreVertical className="w-6 h-6" />
+                  </button>
+                </div>
               </div>
             </>
           )}
         </div>
 
-        {/* Message Area */}
-        <div className="flex-1 p-4 sm:p-6 overflow-y-auto flex flex-col scrollbar-hide">
-          <div className="text-center text-[11px] text-white/30 my-4 uppercase tracking-[0.2em] font-medium flex items-center justify-center gap-4">
-            <div className="h-[1px] flex-1 bg-white/[0.03]"></div>
-            E2E Encrypted Room
-            <div className="h-[1px] flex-1 bg-white/[0.03]"></div>
-          </div>
+        {/* Global Mobile Menu Overlay */}
+        <AnimatePresence>
+          {showMobileMenu && (
+            <>
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/20 backdrop-blur-[2px] z-[998]" 
+                onClick={() => setShowMobileMenu(false)} 
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                className="fixed right-4 top-16 w-52 bg-[#1a1c1e] border border-white/10 rounded-2xl shadow-2xl z-[999] overflow-hidden py-2 backdrop-blur-3xl"
+              >
+                <button 
+                  key="starred-toggle"
+                  onClick={() => { setShowStarredVault(true); setShowMobileMenu(false); }} 
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white/80 hover:bg-white/5 transition-colors"
+                >
+                  <Star className="w-4 h-4 text-emerald-500 fill-emerald-500/20" />
+                  <span>Starred Messages</span>
+                </button>
+                
+                <button 
+                  key="search-toggle"
+                  onClick={() => { setSearchMode(true); setShowMobileMenu(false); }} 
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white/80 hover:bg-white/5 transition-colors"
+                >
+                  <Search className="w-4 h-4" />
+                  <span>Search Chat</span>
+                </button>
 
-          {filteredMessages.map((msg, idx) => {
-            const isMe = msg.sender_id === user.id;
-            const isLastInGroup = filteredMessages[idx + 1]?.sender_id !== msg.sender_id;
-            const isFirstInGroup = filteredMessages[idx - 1]?.sender_id !== msg.sender_id;
+                <button 
+                  key="settings-toggle"
+                  onClick={() => { setShowSettings(true); setShowMobileMenu(false); }} 
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white/80 hover:bg-white/5 transition-colors"
+                >
+                  <Settings className="w-4 h-4" />
+                  <span>Settings</span>
+                </button>
+
+                <div className="h-[1px] bg-white/5 my-1 mx-3" />
+                
+                <button 
+                  key="logout-btn"
+                  onClick={logout} 
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-red-500/5 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Logout</span>
+                </button>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
+        {/* Message Area with Doodle Wallpaper */}
+        <div className="flex-1 overflow-hidden flex flex-col relative">
+          
+          {/* Subtle Dark Doodle Overlay */}
+          <div 
+            className="absolute inset-0 opacity-[0.03] pointer-events-none"
+            style={{ 
+              backgroundImage: 'url("https://www.transparenttextures.com/patterns/carbon-fibre.png")',
+              backgroundRepeat: 'repeat'
+            }}
+          ></div>
+
+          {/* --- Pinned Message Banner --- */}
+          {(() => {
+            const pinnedMsg = messages.find(m => (typeof m.content === 'object' && m.content?.is_pinned));
+            if (!pinnedMsg) return null;
+            
+            const pinnedText = pinnedMsg.type === 'text' 
+              ? (pinnedMsg.content?.text || pinnedMsg.content) 
+              : `📎 ${pinnedMsg.type.toUpperCase()}`;
+
+            return (
+              <motion.div 
+                initial={{ y: -20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                className="absolute top-0 left-0 right-0 z-[100] bg-black/95 backdrop-blur-2xl border-b border-white/[0.05] shadow-2xl flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-white/[0.02] transition-colors"
+                onClick={() => {
+                   document.getElementById(`msg-${pinnedMsg.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-1 h-8 bg-emerald-500 rounded-full" />
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-[11px] font-bold text-emerald-500 uppercase tracking-widest">Pinned Message</span>
+                    <span className="text-sm text-white/70 truncate max-w-[400px]">{pinnedText}</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleContextMenuAction('unpin', null);
+                  }}
+                  className="p-1.5 hover:bg-white/10 rounded-full text-white/40 hover:text-white transition-all"
+                >
+                  <Pin className="w-4 h-4 rotate-45" />
+                </button>
+              </motion.div>
+            );
+          })()}
+
+          <div className="flex-1 p-4 sm:p-6 overflow-y-auto flex flex-col scrollbar-hide relative pt-14">
+            <div className="text-center text-[11px] text-white/30 my-4 uppercase tracking-[0.2em] font-medium flex items-center justify-center gap-4 relative z-10">
+              <div className="h-[1px] flex-1 bg-white/[0.03]"></div>
+              E2E Encrypted Room
+              <div className="h-[1px] flex-1 bg-white/[0.03]"></div>
+            </div>
+
+            {filteredMessages.map((msg, idx) => {
+              const prevMsg = filteredMessages[idx - 1];
+              const nextMsg = filteredMessages[idx + 1];
+              
+              const isMe = msg.sender_id === user.id;
+              const isLastInGroup = nextMsg?.sender_id !== msg.sender_id;
+              const isFirstInGroup = prevMsg?.sender_id !== msg.sender_id;
+
+            // Date Divider Logic
+            const showDateDivider = !prevMsg || format(new Date(msg.created_at), 'yyyy-MM-dd') !== format(new Date(prevMsg.created_at), 'yyyy-MM-dd');
+            const dateStr = format(new Date(msg.created_at), 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'Today' 
+                        : format(new Date(msg.created_at), 'yyyy-MM-dd') === format(new Date(Date.now() - 86400000), 'yyyy-MM-dd') ? 'Yesterday'
+                        : format(new Date(msg.created_at), 'MMMM d, yyyy');
+
+            // Unread Logic: if this is the first unread message from partner
+            const unreadMessages = filteredMessages.filter(m => m.sender_id !== user.id && (m.status === 'sent' || m.status === 'delivered'));
+            const showUnreadMarker = unreadMessages.length > 0 && msg.id === unreadMessages[0].id;
             
             let messageText = '', replyText = null, replySender = null, reaction = null, isEdited = false;
 
@@ -761,17 +968,34 @@ export default function Chat() {
             const mediaUrl = typeof msg.content === 'string' ? msg.content
               : (msg.content?.url || msg.content);
 
-            const isStarred = starredIds.includes(msg.id);
+            const isStarred = typeof msg.content === 'object' && msg.content?.is_starred;
 
             return (
-              <div
-                key={msg.id}
-                className={`flex items-end gap-2 max-w-[90%] sm:max-w-[75%] ${isMe ? 'self-end flex-row-reverse' : 'self-start'} ${
-                  isLastInGroup 
-                    ? (reaction ? 'mb-10' : 'mb-4') 
-                    : (reaction ? 'mb-7' : 'mb-1')
-                }`}
-              >
+              <React.Fragment key={msg.id}>
+                {showDateDivider && (
+                  <div className="flex justify-center my-6 relative z-10">
+                    <div className="px-4 py-1.5 bg-[#ffffff]/5 backdrop-blur-md rounded-xl text-[11px] text-white/40 font-bold uppercase tracking-widest border border-white/5">
+                      {dateStr}
+                    </div>
+                  </div>
+                )}
+
+                {showUnreadMarker && (
+                   <div className="flex justify-center my-6 relative z-10">
+                     <div className="px-5 py-2 bg-emerald-500/10 backdrop-blur-xl border border-emerald-500/20 rounded-full text-[11px] text-emerald-400 font-bold shadow-lg shadow-emerald-500/5">
+                       {unreadMessages.length} Unread Messages
+                     </div>
+                   </div>
+                )}
+
+                <div
+                  id={`msg-${msg.id}`}
+                  className={`flex items-end gap-2 max-w-[90%] sm:max-w-[75%] relative z-10 ${isMe ? 'self-end flex-row-reverse' : 'self-start'} ${
+                    isLastInGroup 
+                      ? (reaction ? 'mb-10' : 'mb-4') 
+                      : (reaction ? 'mb-7' : 'mb-1')
+                  }`}
+                >
                 <div className="hidden sm:block w-8 h-8 flex-shrink-0">
                   {isLastInGroup && (
                     <Avatar 
@@ -815,94 +1039,162 @@ export default function Chat() {
                       </div>
                     </div>
                   )}
-                             <div className="relative">
-                    {/* Message Body Content */}
-                    <div className={msg.type === 'text' ? 'pr-[50px] min-w-[70px]' : ''}>
-                      {msg.type === 'audio' && <AudioPlayer src={typeof msg.content === 'string' ? msg.content : msg.content?.url} isMe={isMe} />}
 
-                      {msg.type === 'image' && (
-                        msg.status === 'error' ? (
-                          <div className="flex items-center gap-2 text-red-400 text-sm px-1"><span>⚠️ Upload failed</span></div>
-                        ) : (
-                          <div className={`cursor-pointer overflow-hidden rounded-xl border border-white/10 relative ${msg.status === 'sending' ? 'opacity-70' : ''}`}
+                  <div className="relative">
+                    {msg.type === 'audio' && <AudioPlayer src={typeof msg.content === 'string' ? msg.content : msg.content?.url} isMe={isMe} />}
+
+                    {msg.type === 'image' && (
+                      msg.status === 'error' ? (
+                        <div className="flex items-center gap-2 text-red-400 text-sm px-1"><span>⚠️ Upload failed</span></div>
+                      ) : (
+                        <div className={`cursor-pointer overflow-hidden rounded-xl border border-white/10 relative ${msg.status === 'sending' ? 'opacity-70' : ''}`}
                             onClick={() => mediaUrl && !mediaUrl.startsWith('blob:') && setViewedPhoto(mediaUrl)}>
-                            <img src={mediaUrl} alt="media" className="max-w-[240px] max-h-[300px] object-cover hover:scale-105 transition-transform duration-500" />
-                            {msg.status === 'sending' && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div></div>}
-                          </div>
-                        )
-                      )}
+                          <img src={mediaUrl} alt="media" className="max-w-[240px] max-h-[300px] object-cover hover:scale-105 transition-transform duration-500" />
+                          {msg.status === 'sending' && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div></div>}
+                        </div>
+                      )
+                    )}
 
-                      {msg.type === 'video' && (
-                        msg.status === 'error' ? (
-                          <div className="flex items-center gap-2 text-red-400 text-sm"><span>⚠️ Video upload failed</span></div>
-                        ) : (
-                          <div className={`overflow-hidden rounded-xl border border-white/10 bg-black/50 relative ${msg.status === 'sending' ? 'opacity-70' : ''}`}>
-                            <video src={mediaUrl} controls className="max-w-[240px] max-h-[300px] outline-none" preload="metadata" />
-                            {msg.status === 'sending' && <div className="absolute inset-0 flex items-center justify-center bg-black/60"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div></div>}
-                          </div>
-                        )
-                      )}
+                    {msg.type === 'video' && (
+                       msg.status === 'error' ? (
+                         <div className="flex items-center gap-2 text-red-400 text-sm"><span>⚠️ Video upload failed</span></div>
+                       ) : (
+                         <div className={`overflow-hidden rounded-xl border border-white/10 bg-black/50 relative ${msg.status === 'sending' ? 'opacity-70' : ''}`}>
+                           <video src={mediaUrl} controls className="max-w-[240px] max-h-[300px] outline-none" preload="metadata" />
+                           {msg.status === 'sending' && <div className="absolute inset-0 flex items-center justify-center bg-black/60"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div></div>}
+                         </div>
+                       )
+                    )}
 
-                      {msg.type === 'file' && (
-                        <a
-                          href={mediaUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          download={msg.fileName}
-                          className={`flex items-center gap-3 py-1 pr-[45px] no-underline ${isMe ? 'text-black' : 'text-white'}`}
-                        >
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isMe ? 'bg-black/10' : 'bg-white/10'}`}>
-                            <File className="w-5 h-5" />
-                          </div>
-                          <div className="flex flex-col min-w-0">
-                            <span className="text-sm font-semibold truncate max-w-[120px]">{msg.fileName || 'File'}</span>
-                            <span className={`text-xs opacity-50`}>
-                              {msg.fileSize ? `${(msg.fileSize / 1024).toFixed(0)} KB` : ''}
-                            </span>
-                          </div>
-                          <ArrowDownToLine className="w-4 h-4 opacity-40 flex-shrink-0" />
-                        </a>
-                      )}
+                    {msg.type === 'file' && (
+                      <a
+                        href={mediaUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download={msg.fileName}
+                        className={`flex items-center gap-3 py-1 pr-[45px] no-underline ${isMe ? 'text-black' : 'text-white'}`}
+                      >
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isMe ? 'bg-black/10' : 'bg-white/10'}`}>
+                          <File className="w-5 h-5" />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm font-semibold truncate max-w-[120px]">{msg.fileName || 'File'}</span>
+                          <span className={`text-xs opacity-50`}>
+                            {msg.fileSize ? `${(msg.fileSize / 1024).toFixed(0)} KB` : ''}
+                          </span>
+                        </div>
+                        <ArrowDownToLine className="w-4 h-4 opacity-40 flex-shrink-0" />
+                      </a>
+                    )}
 
+                    {/* Integrated Metadata Flow - No more absolute gapping */}
+                    <div className="flex flex-wrap items-end justify-end gap-x-2 gap-y-0.5 mt-0.5">
                       {msg.type === 'text' && (
-                        <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">
+                        <p className="flex-1 whitespace-pre-wrap break-words text-[15px] leading-relaxed min-w-0">
                           {messageText}
                         </p>
                       )}
-                    </div>
 
-                    {/* Integrated Corner Timestamp */}
-                    <div className={`absolute bottom-0 right-0 flex items-center gap-1.5 text-[10px] leading-none mb-[-2px] px-1 py-0.5 rounded-lg group/meta ${
-                      msg.type === 'image' || msg.type === 'video' 
-                        ? 'bg-black/40 backdrop-blur-sm text-white m-1' 
-                        : isMe ? 'text-black/45' : 'text-white/25'
-                    }`}>
-                      {isEdited && <span className="italic opacity-70">edited</span>}
-                      <span>{msg.created_at ? format(new Date(msg.created_at), 'HH:mm') : ''}</span>
-                      {isMe && <StatusTick status={msg.status} />}
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setContextMenu({ isOpen: true, position: { x: e.clientX, y: e.clientY }, msg });
-                        }}
-                        className="opacity-0 group-hover/bubble:opacity-100 transition-opacity ml-1 hover:text-white"
-                      >
-                        <ChevronDown className="w-3 h-3" />
-                      </button>
+                      <div className={`flex items-center gap-1.5 text-[10px] leading-none mb-[1px] ${
+                        msg.type === 'image' || msg.type === 'video' 
+                          ? 'absolute bottom-1.5 right-1.5 bg-black/40 backdrop-blur-md text-white px-1.5 py-1 rounded-lg z-20' 
+                          : isMe ? 'text-black/50 ml-auto' : 'text-white/30 ml-auto'
+                      }`}>
+                        {isEdited && <span className="italic opacity-70">edited</span>}
+                        <span>{msg.created_at ? format(new Date(msg.created_at), 'HH:mm') : ''}</span>
+                        {isMe && <StatusTick status={msg.status} />}
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setContextMenu({ isOpen: true, position: { x: e.clientX, y: e.clientY }, msg });
+                          }}
+                          className="opacity-0 group-hover/bubble:opacity-100 transition-opacity ml-0.5 hover:text-emerald-500"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
 
                   {reaction && (
-                    <div className={`absolute -bottom-[14px] left-[-2px] bg-[#202c33] border border-white/[0.1] rounded-full px-1.5 py-1 text-sm shadow-2xl hover:scale-110 transition-all cursor-pointer z-50`}>
+                    <div className={`absolute -bottom-[14px] left-[-2px] bg-[#202c33] border border-white/[0.1] rounded-full px-2 py-1 text-sm shadow-2xl hover:scale-110 transition-all cursor-pointer z-[60]`}>
                       {reaction}
                     </div>
                   )}
                 </motion.div>
               </div>
+            </React.Fragment>
             );
           })}
           <div ref={bottomRef} className="h-4" />
         </div>
+      </div>
+
+        {/* --- Starred Message Vault Drawer --- */}
+        <AnimatePresence>
+          {showStarredVault && (
+            <>
+              <motion.div 
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/60 backdrop-blur-md z-[200]"
+                onClick={() => setShowStarredVault(false)}
+              />
+              <motion.div 
+                initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                className="fixed right-0 top-0 bottom-0 w-full sm:w-[400px] bg-[#111] border-l border-white/10 z-[201] shadow-2xl flex flex-col"
+              >
+                <div className="p-6 border-b border-white/5 bg-[#1a1c1e] flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                      <StarIcon className="w-5 h-5 text-emerald-500" filled />
+                      Starred Messages
+                    </h3>
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold mt-1">Your Personal Vault</p>
+                  </div>
+                  <button onClick={() => setShowStarredVault(false)} className="p-2 hover:bg-white/10 rounded-full transition-all text-white/40 hover:text-white">
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
+                  {(() => {
+                    const starred = messages.filter(m => typeof m.content === 'object' && m.content?.is_starred);
+                    if (starred.length === 0) return (
+                      <div className="h-full flex flex-col items-center justify-center opacity-30 text-center px-10">
+                        <StarIcon className="w-16 h-16 mb-4" />
+                        <p className="font-bold text-sm uppercase tracking-widest">No starred messages yet</p>
+                        <p className="text-xs mt-2 italic font-light">Long press or right-click any message to star it.</p>
+                      </div>
+                    );
+
+                    return starred.reverse().map(m => {
+                      const text = m.type === 'text' ? (m.content?.text || m.content) : `📎 ${m.type.toUpperCase()}`;
+                      return (
+                        <div 
+                          key={m.id}
+                          onClick={() => {
+                            document.getElementById(`msg-${m.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            setShowStarredVault(false);
+                          }}
+                          className="group p-4 bg-white/[0.03] border border-white/[0.05] rounded-2xl cursor-pointer hover:bg-white/[0.06] hover:border-emerald-500/30 transition-all"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                             <span className={`text-[10px] font-bold uppercase tracking-widest ${m.sender_id === user.id ? 'text-blue-400' : 'text-emerald-400'}`}>
+                               {m.sender_id === user.id ? 'You' : partnerName}
+                             </span>
+                             <span className="text-[10px] text-white/30">{format(new Date(m.created_at), 'MMM d, HH:mm')}</span>
+                          </div>
+                          <p className="text-sm text-white/80 line-clamp-3 leading-relaxed">{text}</p>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
 
         {showSettings && (
           <SettingsModal 
