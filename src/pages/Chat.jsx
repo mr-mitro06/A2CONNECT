@@ -4,15 +4,22 @@ import { supabase } from '../lib/supabaseClient';
 import { encryptMessage, decryptMessage } from '../lib/encryption';
 import PrivacyEye from '../components/PrivacyEye';
 import FakeTerminal from '../components/FakeTerminal';
+import PhotoViewer from '../components/PhotoViewer';
+import AudioPlayer from '../components/AudioPlayer';
+import MessageContextMenu from '../components/MessageContextMenu';
+import EmojiPicker from 'emoji-picker-react';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
-import { LogOut, Send, Mic, Square, Play, Pause, MoreVertical, Phone, X, Reply } from 'lucide-react';
+import { LogOut, Send, Mic, Square, Play, Pause, MoreVertical, Phone, X, Reply, Paperclip, Loader2, Trash2, Smile } from 'lucide-react';
 
 export default function Chat() {
   const { user, logout } = useAuth();
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [replyingTo, setReplyingTo] = useState(null);
+  
+  const [contextMenu, setContextMenu] = useState({ isOpen: false, position: null, msg: null });
+  const [showInputEmoji, setShowInputEmoji] = useState(false);
   
   const [isHideMode, setIsHideMode] = useState(false);
   const [partnerOnline, setPartnerOnline] = useState(false);
@@ -24,6 +31,10 @@ export default function Chat() {
   const audioChunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
   
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const fileInputRef = useRef(null);
+  const [viewedPhoto, setViewedPhoto] = useState(null);
+
   const partnerId = user.id === 'user_abhi' ? 'user_arya' : 'user_abhi';
   const partnerName = user.id === 'user_abhi' ? 'Arya' : 'Abhi';
   
@@ -49,6 +60,8 @@ export default function Chat() {
             } catch {
               newMsg.content = { text: rawText };
             }
+          } else if (['audio', 'image', 'video'].includes(newMsg.type)) {
+            newMsg.content = decryptMessage(newMsg.content);
           }
           return newMsg;
         });
@@ -67,21 +80,77 @@ export default function Chat() {
         setMessages((prev) => {
           // Prevent duplicates from our own optimistic UI updates
           const exists = prev.some(m => m.id === msg.id);
-          if (exists) return prev; // Do nothing, local state handled it
+          if (exists) return prev; 
           
-          if (msg.type === 'text') {
-            const rawText = decryptMessage(msg.content);
+          const newMsg = { ...msg };
+          if (newMsg.type === 'text') {
+            const rawText = decryptMessage(newMsg.content);
             try {
-              msg.content = JSON.parse(rawText);
+              newMsg.content = JSON.parse(rawText);
             } catch {
-              msg.content = { text: rawText };
+              newMsg.content = { text: rawText };
             }
+          } else if (['audio', 'image', 'video'].includes(newMsg.type)) {
+            newMsg.content = decryptMessage(newMsg.content);
           }
-          return [...prev, msg];
+          return [...prev, newMsg];
         });
         setTimeout(scrollToBottom, 50);
       })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, (payload) => {
+        setMessages((prev) => prev.filter(m => m.id !== payload.old.id));
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
+        let msg = { ...payload.new };
+        try {
+          if (msg.type === 'text') {
+            const rawText = decryptMessage(msg.content);
+            msg.content = JSON.parse(rawText);
+          } else if (['audio', 'image', 'video'].includes(msg.type)) {
+            msg.content = decryptMessage(msg.content);
+          }
+        } catch {}
+        setMessages((prev) => prev.map(m => m.id === msg.id ? msg : m));
+      })
       .subscribe();
+
+    // 2.5 Hardened Polling Fallback (10 seconds)
+    // Ensures absolutely zero dropped messages if WebSocket sleeps
+    const fallbackInterval = setInterval(async () => {
+      const { data } = await supabase.from('messages')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(30);
+      
+      if (data) {
+        setMessages(prev => {
+          let hasNew = false;
+          let newMessages = [...prev];
+          data.reverse().forEach(msg => {
+            if (!prev.find(m => m.id === msg.id)) {
+              hasNew = true;
+              const newMsg = { ...msg };
+              if (newMsg.type === 'text') {
+                const rawText = decryptMessage(newMsg.content);
+                try {
+                  newMsg.content = JSON.parse(rawText);
+                } catch {
+                  newMsg.content = { text: rawText };
+                }
+              } else if (['audio', 'image', 'video'].includes(newMsg.type)) {
+                newMsg.content = decryptMessage(newMsg.content);
+              }
+              newMessages.push(newMsg);
+            }
+          });
+          if (hasNew) {
+            setTimeout(scrollToBottom, 50);
+            return newMessages.sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+          }
+          return prev;
+        });
+      }
+    }, 10000);
 
     // 3. Presence and Typing Sync
     roomChannelRef.current = supabase.channel('room_presence', {
@@ -108,6 +177,7 @@ export default function Chat() {
       });
 
     return () => {
+      clearInterval(fallbackInterval);
       supabase.removeChannel(dbChannel);
       supabase.removeChannel(roomChannelRef.current);
     };
@@ -145,9 +215,15 @@ export default function Chat() {
     const msgId = generateUUID();
     
     // Package text and reply into a JSON payload for encryption
+    const getReplyPreview = (replyMsg) => {
+      if (!replyMsg) return null;
+      if (['audio', 'image', 'video'].includes(replyMsg.type)) return `📸 Media Payload`;
+      return typeof replyMsg.content === 'object' ? replyMsg.content.text : replyMsg.content;
+    };
+
     const plaintextPayload = JSON.stringify({
       text: messageText,
-      reply_text: replyingTo ? (replyingTo.type === 'audio' ? 'Voice Message' : replyingTo.content.text) : null,
+      reply_text: getReplyPreview(replyingTo),
       reply_sender: replyingTo ? (replyingTo.sender_id === user.id ? 'You' : partnerName) : null
     });
 
@@ -188,6 +264,55 @@ export default function Chat() {
     }
   };
 
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingMedia(true);
+    const msgId = generateUUID();
+    const isVideo = file.type.startsWith('video/');
+    const msgType = isVideo ? 'video' : 'image';
+    const localUrl = URL.createObjectURL(file);
+
+    // Optimistic UI Update
+    const optimisticMsg = {
+      id: msgId,
+      sender_id: user.id,
+      receiver_id: partnerId,
+      content: localUrl,
+      type: msgType,
+      status: 'sending',
+      created_at: new Date().toISOString()
+    };
+    setMessages(prev => [...prev, optimisticMsg]);
+    setTimeout(scrollToBottom, 50);
+
+    const fileName = `${Date.now()}_${user.id}_${file.name.replace(/\s+/g, '_')}`;
+    const { data, error } = await supabase.storage.from('media').upload(fileName, file, { upsert: false });
+    
+    if (!error && data) {
+      const publicUrl = supabase.storage.from('media').getPublicUrl(fileName).data.publicUrl;
+      const encryptedUrl = encryptMessage(publicUrl);
+      
+      const dbPayload = {
+        id: msgId,
+        sender_id: user.id,
+        receiver_id: partnerId,
+        content: encryptedUrl,
+        type: msgType,
+        status: 'sent'
+      };
+      
+      await supabase.from('messages').insert([dbPayload]);
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: 'sent', content: publicUrl } : m));
+    } else {
+      console.error('Upload failed', error);
+    }
+    
+    setIsUploadingMedia(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -207,16 +332,17 @@ export default function Chat() {
         if (!error && data) {
           const publicUrl = supabase.storage.from('media').getPublicUrl(fileName).data.publicUrl;
           
-          // Encrypt the URL just for extra safety
+          const msgUrl = decryptMessage(publicUrl); // Legacy logic if needed, but going forward we decrypt inline
           const encryptedUrl = encryptMessage(publicUrl);
-          const msg = {
+          const dbPayload = {
+            id: generateUUID(),
             sender_id: user.id,
             receiver_id: partnerId,
             content: encryptedUrl,
             type: 'audio',
             status: 'sent'
           };
-          await supabase.from('messages').insert([msg]);
+          await supabase.from('messages').insert([dbPayload]);
         }
       };
 
@@ -238,6 +364,17 @@ export default function Chat() {
     }
   };
 
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      // Prevent the onstop handler from uploading
+      mediaRecorderRef.current.onstop = null; 
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      setIsRecording(false);
+      clearInterval(recordingTimerRef.current);
+    }
+  };
+
   const formatRecTime = (sec) => {
     const mins = Math.floor(sec / 60);
     const secs = sec % 60;
@@ -251,9 +388,54 @@ export default function Chat() {
     </>
   );
 
+  const handleContextMenuAction = async (action, emoji = null) => {
+    const contextMsg = contextMenu.msg;
+    setContextMenu({ isOpen: false, position: null, msg: null });
+    if (!contextMsg) return;
+
+    if (action === 'reply') {
+      setReplyingTo(contextMsg);
+    } 
+    else if (action === 'copy') {
+      let t = '';
+      if (contextMsg.type === 'text') {
+        t = typeof contextMsg.content === 'object' ? contextMsg.content.text : contextMsg.content;
+      } else {
+        t = contextMsg.content;
+      }
+      navigator.clipboard.writeText(t);
+    } 
+    else if (action === 'delete') {
+      // Optimistic delete
+      setMessages(prev => prev.filter(m => m.id !== contextMsg.id));
+      await supabase.from('messages').delete().eq('id', contextMsg.id);
+    } 
+    else if (action === 'react') {
+      // Create reaction payload directly
+      let pPayload = typeof contextMsg.content === 'object' ? { ...contextMsg.content } : { text: contextMsg.content };
+      pPayload.reaction = emoji;
+      
+      const updatedDBPayload = encryptMessage(JSON.stringify(pPayload));
+      const optimisticMsg = { ...contextMsg, content: pPayload };
+      setMessages(prev => prev.map(m => m.id === contextMsg.id ? optimisticMsg : m));
+      await supabase.from('messages').update({ content: updatedDBPayload }).eq('id', contextMsg.id);
+    }
+  };
+
   return (
-    <div className="h-[100dvh] w-full flex bg-transparent text-white overflow-hidden selection:bg-white/20">
+    <div className="h-[100dvh] w-full flex bg-transparent text-white overflow-hidden selection:bg-white/20 relative">
       <PrivacyEye toggleHide={setIsHideMode} isHidden={isHideMode} />
+      <PhotoViewer src={viewedPhoto} isOpen={!!viewedPhoto} onClose={() => setViewedPhoto(null)} />
+      
+      {contextMenu.isOpen && (
+        <MessageContextMenu 
+          position={contextMenu.position} 
+          msg={contextMenu.msg} 
+          isMe={contextMenu.msg.sender_id === user.id}
+          onClose={() => setContextMenu({ isOpen: false, position: null, msg: null })}
+          onAction={handleContextMenuAction}
+        />
+      )}
       
       {/* Sidebar - Desktop Only */}
       <div className="hidden md:flex w-[350px] border-r border-white-[0.03] flex-col glass-panel rounded-none border-t-0 border-l-0 border-b-0">
@@ -313,12 +495,31 @@ export default function Chat() {
           
           {messages.map((msg) => {
             const isMe = msg.sender_id === user.id;
-            const messageText = msg.type === 'text' ? (msg.content.text || msg.content) : '';
-            const replyText = msg.type === 'text' ? msg.content.reply_text : null;
-            const replySender = msg.type === 'text' ? msg.content.reply_sender : null;
+            
+            // Safe extraction to prevent FATAL "Object as React child" crashes
+            let messageText = '';
+            let replyText = null;
+            let replySender = null;
+            let reaction = null;
+
+            if (msg.type === 'text') {
+              if (typeof msg.content === 'object' && msg.content !== null) {
+                messageText = msg.content.text ?? '';
+                replyText = msg.content.reply_text ?? null;
+                replySender = msg.content.reply_sender ?? null;
+                reaction = msg.content.reaction ?? null;
+              } else {
+                messageText = msg.content || '';
+              }
+            } else if (['audio', 'image', 'video'].includes(msg.type) && typeof msg.content === 'object') {
+                reaction = msg.content.reaction ?? null;
+            }
 
             return (
-              <div key={msg.id} className={`flex items-end gap-2 max-w-[90%] sm:max-w-[75%] ${isMe ? 'self-end flex-row-reverse' : 'self-start'}`}>
+              <div 
+                key={msg.id} 
+                className={`flex items-end gap-2 max-w-[90%] sm:max-w-[75%] ${isMe ? 'self-end flex-row-reverse' : 'self-start'}`}
+              >
                 {/* Visual Avatar Spacer or Avatar */}
                 <div className={`hidden sm:flex w-8 h-8 rounded-full flex-shrink-0 items-center justify-center text-[11px] font-bold shadow-inner ${isMe ? 'bg-white text-black' : 'bg-neutral-800 text-white/70'}`}>
                   {isMe ? user.name[0] : partnerName[0]}
@@ -333,7 +534,11 @@ export default function Chat() {
                       setReplyingTo(msg);
                     }
                   }}
-                  className={`relative px-4 py-3 sm:px-5 sm:py-3.5 rounded-3xl ${isMe ? 'rounded-br-[8px] bg-white text-black shadow-lg shadow-white/5' : 'rounded-bl-[8px] bg-[#1a1a1a] border border-white/[0.04] text-white/90 shadow-2xl'} text-[15px] leading-relaxed font-medium z-10 cursor-grab active:cursor-grabbing`}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({ isOpen: true, position: { x: e.clientX, y: e.clientY }, msg });
+                  }}
+                  className={`relative px-4 py-3 sm:px-5 sm:py-3.5 rounded-3xl ${isMe ? 'rounded-br-[8px] bg-white text-black shadow-lg shadow-white/5' : 'rounded-bl-[8px] bg-[#1a1a1a] border border-white/[0.04] text-white/90 shadow-2xl'} text-[15px] leading-relaxed font-medium z-10 cursor-grab active:cursor-grabbing select-none`}
                 >
                   
                   {replyText && (
@@ -343,24 +548,23 @@ export default function Chat() {
                     </div>
                   )}
 
-                  {msg.type === 'audio' ? (
-                     <div className="flex items-center gap-3">
-                         <button className={`w-10 h-10 rounded-full flex items-center justify-center ${isMe ? 'bg-black text-white' : 'bg-white text-black'}`}
-                            onClick={() => {
-                               const url = decryptMessage(msg.content);
-                               new Audio(url).play();
-                            }}
-                         >
-                            <Play className="w-4 h-4 ml-0.5" fill="currentColor" />
-                         </button>
-                         <div className="flex flex-col gap-1">
-                           <div className={`h-1.5 w-32 rounded-full ${isMe ? 'bg-black/20' : 'bg-white/20'}`}>
-                             <div className={`h-full w-1/3 rounded-full ${isMe ? 'bg-black' : 'bg-white'}`}></div>
-                           </div>
-                           <span className={`text-[10px] ${isMe ? 'text-black/50' : 'text-white/40'}`}>Voice Message</span>
-                         </div>
-                     </div>
-                  ) : (
+                  {msg.type === 'audio' && (
+                     <AudioPlayer src={msg.content} isMe={isMe} />
+                  )}
+
+                  {msg.type === 'image' && (
+                    <div className="cursor-pointer overflow-hidden rounded-xl border border-white/10" onClick={() => setViewedPhoto(msg.content)}>
+                      <img src={msg.content} alt="Upload" className="max-w-[240px] max-h-[300px] object-cover hover:scale-105 transition-transform duration-500" />
+                    </div>
+                  )}
+
+                  {msg.type === 'video' && (
+                    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/50">
+                      <video src={msg.content} controls className="max-w-[240px] max-h-[300px] outline-none" preload="metadata" />
+                    </div>
+                  )}
+
+                  {msg.type === 'text' && (
                      <span className="whitespace-pre-wrap word-break">{messageText}</span>
                   )}
 
@@ -370,6 +574,12 @@ export default function Chat() {
                       <svg viewBox="0 0 16 15" width="14" height="13" className="fill-current"><path d="M15.01 3.316l-.478-.372a.365.365 0 0 0-.51.063L8.666 9.879a.32.32 0 0 1-.484.033l-.358-.325a.319.319 0 0 0-.484.032l-.378.483a.418.418 0 0 0 .036.541l1.32 1.266c.143.14.361.125.484-.033l6.272-8.048a.366.366 0 0 0-.064-.512zm-4.1 0l-.478-.372a.365.365 0 0 0-.51.063L4.566 9.879a.32.32 0 0 1-.484.033L1.891 7.769a.366.366 0 0 0-.515.006l-.423.433a.364.364 0 0 0 .006.514l3.258 3.185c.143.136.361.125.484-.033l6.272-8.048a.365.365 0 0 0-.063-.51z"></path></svg>
                     )}
                   </div>
+
+                  {reaction && (
+                    <div className={`absolute -bottom-3 ${isMe ? 'right-4' : 'left-4'} bg-[#1a1a1a] border border-white/10 rounded-full px-2 py-0.5 text-base shadow-xl transform hover:scale-110 transition-transform cursor-pointer`}>
+                      {reaction}
+                    </div>
+                  )}
                 </motion.div>
               </div>
             );
@@ -401,15 +611,53 @@ export default function Chat() {
                  <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse"></div>
                  <span className="text-red-400 font-mono tracking-widest">{formatRecTime(recordingTime)}</span>
                </div>
-               <button 
-                  onClick={stopRecording}
-                  className="w-10 h-10 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20"
-                >
-                  <Square className="w-4 h-4 fill-current" />
-               </button>
+               <div className="flex gap-2 mr-1">
+                 <button 
+                    onClick={cancelRecording}
+                    className="w-10 h-10 rounded-full bg-black/20 text-red-400 flex items-center justify-center hover:bg-black/40 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                 </button>
+                 <button 
+                    onClick={stopRecording}
+                    className="w-10 h-10 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20"
+                  >
+                    <Send className="w-4 h-4 ml-0.5 fill-current" />
+                 </button>
+               </div>
              </div>
           ) : (
-             <div className="glass-panel p-2 pl-4 rounded-[2rem] flex items-end gap-2 shadow-2xl transition-all duration-300 focus-within:border-white/20 focus-within:bg-white/[0.05]">
+              <div className="glass-panel p-2 pl-4 rounded-[2rem] flex items-end gap-2 shadow-2xl transition-all duration-300 focus-within:border-white/20 focus-within:bg-white/[0.05] relative">
+                
+                {showInputEmoji && (
+                  <div className="absolute bottom-16 left-0 shadow-2xl">
+                    <EmojiPicker theme="dark" onEmojiClick={(e) => setNewMessage(m => m + e.emoji)} />
+                  </div>
+                )}
+                
+                <button 
+                  onClick={() => setShowInputEmoji(!showInputEmoji)}
+                  className={`w-10 h-10 mb-1 rounded-full flex items-center justify-center transition-all ${showInputEmoji ? 'bg-white/20 text-white' : 'text-white/50 hover:bg-white/10 hover:text-white'}`}
+                >
+                  <Smile className="w-5 h-5" />
+                </button>
+
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  accept="image/*, video/*"  
+                  className="hidden" 
+                  onChange={handleFileUpload}
+                />
+                
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingMedia}
+                  className="w-10 h-10 mb-1 rounded-full text-white/50 flex items-center justify-center hover:bg-white/10 hover:text-white transition-all disabled:opacity-50"
+                >
+                  {isUploadingMedia ? <Loader2 className="w-5 h-5 animate-spin text-emerald-500" /> : <Paperclip className="w-5 h-5" />}
+                </button>
+
                 <input 
                   value={newMessage}
                   onChange={handleTyping}
