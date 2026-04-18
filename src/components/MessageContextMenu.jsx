@@ -44,7 +44,7 @@ export default function MessageContextMenu({ position, msg, isMe, isStarred, onC
   const targetMenuWidth = showFullPicker ? 300 : 410; 
   const availableWidth = screenWidth - padding * 2;
   const effectiveMenuWidth = isMobile ? availableWidth : Math.min(targetMenuWidth, availableWidth);
-  const menuHeight = 420; 
+  const menuHeight = 500; // Increased to accommodate all actions and prevent clipping
   const isRightSide = position.x > screenWidth / 2;
   const isBottomPart = position.y > screenHeight / 2;
 
@@ -139,7 +139,7 @@ export default function MessageContextMenu({ position, msg, isMe, isStarred, onC
               </div>
 
               {/* --- Action Menu List --- */}
-              <div className="bg-[#202c33] border border-white/[0.08] rounded-[1.8rem] w-[230px] py-2.5 shadow-[0_16px_60px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col backdrop-blur-3xl">
+              <div className="bg-[#202c33] border border-white/[0.08] rounded-[1.8rem] w-[230px] py-2.5 shadow-[0_16px_60px_rgba(0,0,0,0.8)] flex flex-col backdrop-blur-3xl max-h-[calc(100vh-140px)] overflow-y-auto scrollbar-hide">
                 <button onClick={() => onAction('info')} className="flex items-center gap-4 px-5 py-3 text-white text-[15px] hover:bg-white/5 transition-colors group">
                   <Info className="w-5 h-5 opacity-50 group-hover:opacity-100 transition-opacity" />
                   <span>Message info</span>
