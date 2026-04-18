@@ -36,24 +36,24 @@ export default function MessageContextMenu({ position, msg, isMe, isStarred, onC
 
   if (!position || !msg) return null;
 
-  // --- SMART AUTO-ALIGN LOGIC (MOBILE-FRIENDLY) ---
-  const menuWidth = 410; // Accurately reflects the reaction pill width
-  const menuHeight = 400; 
-  const screenHeight = window.innerHeight;
-  const screenWidth = window.innerWidth;
-  const padding = 16; // Consistent padding for all devices
-
+  // --- DYNAMIC AUTO-ALIGN LOGIC (RESPONSIVE) ---
+  const isMobile = screenWidth < 480;
+  const padding = isMobile ? 8 : 16;
+  const targetMenuWidth = showFullPicker ? 300 : 410; 
+  const availableWidth = screenWidth - padding * 2;
+  const effectiveMenuWidth = isMobile ? availableWidth : Math.min(targetMenuWidth, availableWidth);
+  const menuHeight = 420; 
   const isRightSide = position.x > screenWidth / 2;
   const isBottomPart = position.y > screenHeight / 2;
 
-  // Calculate X: Anchor to the click but PIVOT if it's on the right
-  let finalLeft = position.x;
-  if (isRightSide) {
-    finalLeft = position.x - menuWidth;
+  // Calculate X: Anchor to the click but PIVOT if it's on the right (Desktop only)
+  let finalLeft = isMobile ? padding : position.x;
+  if (!isMobile && isRightSide) {
+    finalLeft = position.x - effectiveMenuWidth;
   }
   
   // Hard Clamp to screen edges
-  finalLeft = Math.max(padding, Math.min(finalLeft, screenWidth - menuWidth - padding));
+  finalLeft = Math.max(padding, Math.min(finalLeft, screenWidth - effectiveMenuWidth - padding));
 
   // Calculate Y: Pivot if it's on the bottom
   let finalTop = position.y;
@@ -94,10 +94,10 @@ export default function MessageContextMenu({ position, msg, isMe, isStarred, onC
             left: finalLeft,
             position: 'absolute',
             transform: transform,
-            maxWidth: `calc(100vw - ${padding * 2}px)`,
-            width: 'fit-content'
+            maxWidth: `${effectiveMenuWidth}px`,
+            width: isMobile ? `${effectiveMenuWidth}px` : 'fit-content'
           }}
-          className={`flex flex-col gap-2 shadow-2xl ${isRightSide ? 'items-end' : 'items-start'} pointer-events-auto`}
+          className={`flex flex-col gap-2 shadow-2xl ${isMobile ? 'items-center' : (isRightSide ? 'items-end' : 'items-start')} pointer-events-auto`}
         >
           {showFullPicker ? (
             <div className="bg-[#1c2226] p-2 rounded-[2.5rem] border border-white/10 shadow-2xl overflow-hidden">
@@ -116,22 +116,22 @@ export default function MessageContextMenu({ position, msg, isMe, isStarred, onC
           ) : (
             <>
               {/* --- Floating Reaction Pill --- */}
-              <div className="bg-[#202c33] border border-white/[0.12] rounded-[2rem] px-4 py-2 flex items-center gap-3 shadow-[0_12px_48px_rgba(0,0,0,0.7)] backdrop-blur-3xl transition-transform max-w-full overflow-x-auto no-scrollbar">
+              <div className="bg-[#202c33] border border-white/[0.12] rounded-[2rem] px-3 py-2 sm:px-4 flex items-center justify-center flex-wrap gap-2 sm:gap-3 shadow-[0_12px_48px_rgba(0,0,0,0.7)] backdrop-blur-3xl transition-transform w-full">
                 {EMOJIS.map(emoji => {
                   const isActive = currentReaction === emoji;
                   return (
                     <button 
                       key={emoji} 
                       onClick={() => onAction('react', isActive ? null : emoji)}
-                      className={`text-[24px] hover:scale-125 transition-all w-10 h-10 flex items-center justify-center rounded-full group ${isActive ? 'bg-white/10 ring-2 ring-white/20' : 'hover:bg-white/5 opacity-90 hover:opacity-100'}`}
+                      className={`text-[20px] sm:text-[24px] hover:scale-125 transition-all w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full group ${isActive ? 'bg-white/10 ring-2 ring-white/20' : 'hover:bg-white/5 opacity-90 hover:opacity-100'}`}
                     >
                       <span>{emoji}</span>
                     </button>
                   );
                 })}
-                <div className="w-[1px] h-6 bg-white/[0.15] mx-1"></div>
+                {!isMobile && <div className="w-[1px] h-6 bg-white/[0.15] mx-1"></div>}
                 <button onClick={() => setShowFullPicker(true)}
-                  className="w-10 h-10 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-all font-light">
+                  className="w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-all font-light">
                   <Plus className="w-7 h-7" />
                 </button>
               </div>
