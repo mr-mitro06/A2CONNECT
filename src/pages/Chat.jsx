@@ -78,9 +78,10 @@ export default function Chat() {
         let msg = { ...payload.new };
         
         setMessages((prev) => {
-          // Prevent duplicates from our own optimistic UI updates
-          const exists = prev.some(m => m.id === msg.id);
-          if (exists) return prev; 
+          // Prevent duplicates ONLY for optimistic messages we sent ourselves
+          const existing = prev.find(m => m.id === msg.id);
+          if (existing && existing.sender_id === user.id) return prev; 
+          if (existing) return prev;
           
           const newMsg = { ...msg };
           if (newMsg.type === 'text') {
@@ -91,7 +92,13 @@ export default function Chat() {
               newMsg.content = { text: rawText };
             }
           } else if (['audio', 'image', 'video'].includes(newMsg.type)) {
-            newMsg.content = decryptMessage(newMsg.content);
+            // For media - decrypt the URL if it's a cipher string, otherwise use as-is
+            try {
+              const decrypted = decryptMessage(newMsg.content);
+              newMsg.content = decrypted || newMsg.content;
+            } catch {
+              // content may already be a plain URL (rare)
+            }
           }
           return [...prev, newMsg];
         });
@@ -565,15 +572,38 @@ export default function Chat() {
                   )}
 
                   {msg.type === 'image' && (
-                    <div className="cursor-pointer overflow-hidden rounded-xl border border-white/10" onClick={() => setViewedPhoto(msg.content)}>
-                      <img src={msg.content} alt="Upload" className="max-w-[240px] max-h-[300px] object-cover hover:scale-105 transition-transform duration-500" />
-                    </div>
+                    msg.status === 'error' ? (
+                      <div className="flex items-center gap-2 text-red-400 text-sm px-1">
+                        <span>⚠️</span>
+                        <span className="text-xs">{typeof msg.content === 'string' && msg.content.startsWith('Upload') ? msg.content : 'Upload failed. Check bucket permissions.'}</span>
+                      </div>
+                    ) : (
+                      <div className={`cursor-pointer overflow-hidden rounded-xl border border-white/10 relative ${msg.status === 'sending' ? 'opacity-70' : ''}`} onClick={() => typeof msg.content === 'string' && msg.content.startsWith('blob:') ? null : setViewedPhoto(msg.content)}>
+                        <img src={msg.content} alt="Upload" className="max-w-[240px] max-h-[300px] object-cover hover:scale-105 transition-transform duration-500" />
+                        {msg.status === 'sending' && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          </div>
+                        )}
+                      </div>
+                    )
                   )}
 
                   {msg.type === 'video' && (
-                    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/50">
-                      <video src={msg.content} controls className="max-w-[240px] max-h-[300px] outline-none" preload="metadata" />
-                    </div>
+                    msg.status === 'error' ? (
+                      <div className="flex items-center gap-2 text-red-400 text-sm px-1">
+                        <span>⚠️ Video upload failed</span>
+                      </div>
+                    ) : (
+                      <div className={`overflow-hidden rounded-xl border border-white/10 bg-black/50 relative ${msg.status === 'sending' ? 'opacity-70' : ''}`}>
+                        <video src={msg.content} controls className="max-w-[240px] max-h-[300px] outline-none" preload="metadata" />
+                        {msg.status === 'sending' && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          </div>
+                        )}
+                      </div>
+                    )
                   )}
 
                   {msg.type === 'text' && (
@@ -642,14 +672,23 @@ export default function Chat() {
               <div className="glass-panel p-2 pl-4 rounded-[2rem] flex items-end gap-2 shadow-2xl transition-all duration-300 focus-within:border-white/20 focus-within:bg-white/[0.05] relative">
                 
                 {showInputEmoji && (
-                  <div className="absolute bottom-16 left-0 shadow-2xl">
-                    <EmojiPicker theme="dark" onEmojiClick={(e) => setNewMessage(m => m + e.emoji)} />
+                  <div className="absolute bottom-16 left-0 z-50 shadow-2xl">
+                    <EmojiPicker
+                      theme="dark"
+                      previewConfig={{ showPreview: false }}
+                      skinTonesDisabled
+                      height={380}
+                      width={320}
+                      onEmojiClick={(e) => setNewMessage(m => m + e.emoji)}
+                    />
                   </div>
                 )}
-                
-                <button 
-                  onClick={() => setShowInputEmoji(!showInputEmoji)}
-                  className={`w-10 h-10 mb-1 rounded-full flex items-center justify-center transition-all ${showInputEmoji ? 'bg-white/20 text-white' : 'text-white/50 hover:bg-white/10 hover:text-white'}`}
+
+                <button
+                  onClick={() => setShowInputEmoji(v => !v)}
+                  className={`w-10 h-10 mb-1 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
+                    showInputEmoji ? 'bg-white/20 text-white' : 'text-white/50 hover:bg-white/10 hover:text-white'
+                  }`}
                 >
                   <Smile className="w-5 h-5" />
                 </button>
