@@ -1,21 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Reply, Copy, Trash2, Smile, X } from 'lucide-react';
+import { Reply, Copy, Trash2, Smile, X, Star } from 'lucide-react';
 import EmojiPicker from 'emoji-picker-react';
 
-const StarIcon = ({ className, filled }) => (
-  <svg className={className} viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-  </svg>
-);
+const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
 const PenIcon = ({ className }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
     <path d="m15 5 4 4"/>
   </svg>
 );
-
-const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
 export default function MessageContextMenu({ position, msg, isMe, isStarred, onClose, onAction }) {
   const menuRef = useRef(null);
@@ -41,17 +36,12 @@ export default function MessageContextMenu({ position, msg, isMe, isStarred, onC
 
   if (!position || !msg) return null;
 
-  // Improved positioning logic:
-  // If we are in the bottom part of the screen, flip the menu upwards
-  const menuWidth = 240;
+  const menuWidth = 220;
   const screenHeight = window.innerHeight;
   const screenWidth = window.innerWidth;
   
-  // Flip if the click is in the bottom 40% of the screen
   const isBottomPart = position.y > screenHeight * 0.6;
   const yCoord = isBottomPart ? position.y - 15 : position.y + 15;
-  
-  // horizontal: clamp to screen edges with padding
   const xCoord = Math.max(15, Math.min(position.x, screenWidth - menuWidth - 15));
   const isRightSide = position.x > screenWidth / 2;
 
@@ -59,94 +49,105 @@ export default function MessageContextMenu({ position, msg, isMe, isStarred, onC
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-[2px]"
+        className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-[4px]"
         onContextMenu={(e) => { e.preventDefault(); onClose(); }}
       >
         <motion.div
           ref={menuRef}
-          initial={{ opacity: 0, scale: 0.9, y: 10 }}
+          initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.9 }}
-          transition={{ type: 'spring', duration: 0.4, bounce: 0.3 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          transition={{ type: 'spring', duration: 0.35, bounce: 0.2 }}
           style={{
             top: yCoord,
             left: xCoord,
             position: 'absolute',
             transform: isBottomPart ? 'translateY(-100%)' : 'none'
           }}
-          className={`flex flex-col gap-2 shadow-2xl ${isRightSide ? 'items-end' : 'items-start'}`}
+          className={`flex flex-col gap-1.5 shadow-2xl ${isRightSide ? 'items-end' : 'items-start'}`}
         >
           {showFullPicker ? (
-            <EmojiPicker
-              theme="dark"
-              previewConfig={{ showPreview: false }}
-              skinTonesDisabled
-              height={380}
-              width={320}
-              onEmojiClick={(e) => onAction('react', e.emoji)}
-            />
+            <div className="bg-[#1c2226] p-2 rounded-[2rem] border border-white/5 shadow-2xl overflow-hidden">
+              <EmojiPicker
+                theme="dark"
+                previewConfig={{ showPreview: false }}
+                skinTonesDisabled
+                height={380}
+                width={300}
+                onEmojiClick={(e) => {
+                  onAction('react', e.emoji);
+                  setShowFullPicker(false);
+                }}
+              />
+            </div>
           ) : (
             <>
-              {/* Reaction Bar */}
-              <div className="bg-[#1a1a1a] border border-white/10 rounded-full px-3 py-2 flex items-center gap-2 shadow-2xl">
+              {/* --- High Fidelity Reaction Pill --- */}
+              <div className="bg-[#202c33]/98 backdrop-blur-xl border border-white/[0.08] rounded-full px-4 py-2 flex items-center gap-3 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
                 {EMOJIS.map(emoji => {
                   const isActive = currentReaction === emoji;
                   return (
                     <button 
                       key={emoji} 
                       onClick={() => onAction('react', isActive ? null : emoji)}
-                      className={`text-xl hover:scale-125 transition-all rounded-full w-8 h-8 flex items-center justify-center ${isActive ? 'bg-white/20 scale-110 shadow-[0_0_10px_rgba(255,255,255,0.2)]' : 'hover:bg-white/10 opacity-70 hover:opacity-100'}`}
+                      className={`text-[22px] hover:scale-125 transition-all w-9 h-9 flex items-center justify-center rounded-full ${isActive ? 'bg-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.3)] scale-110' : 'hover:bg-white/5 opacity-80 hover:opacity-100'}`}
                     >
                       {emoji}
                     </button>
                   );
                 })}
-                <div className="w-[1px] h-6 bg-white/10 mx-1"></div>
+                <div className="w-[1px] h-6 bg-white/[0.1] mx-1"></div>
                 <button onClick={() => setShowFullPicker(true)}
-                  className="text-white/50 hover:text-white transition-colors w-8 h-8 flex items-center justify-center">
-                  <Smile className="w-5 h-5" />
+                  className="w-9 h-9 flex items-center justify-center rounded-full text-white/40 hover:text-white hover:bg-white/10 transition-all">
+                  <Smile className="w-6 h-6" />
                 </button>
               </div>
 
-              {/* Action Menu */}
-              <div className="bg-[#1a1a1a] border border-white/10 rounded-2xl w-[210px] py-2 shadow-2xl overflow-hidden flex flex-col">
-                <button onClick={() => onAction('reply')} className="menu-item">
-                  Reply <Reply className="w-4 h-4 text-white/50" />
+              {/* --- Action Menu List --- */}
+              <div className="bg-[#1a1c1e] border border-white/[0.08] rounded-[1.8rem] w-[220px] py-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.6)] overflow-hidden flex flex-col">
+                <button onClick={() => onAction('reply')} className="flex items-center justify-between px-5 py-3 text-white text-[15px] hover:bg-white/5 transition-colors group">
+                  <span>Reply</span>
+                  <Reply className="w-5 h-5 opacity-40 group-hover:opacity-100 transition-opacity" />
+                </button>
+
+                {msg.type === 'text' && (
+                  <button onClick={() => onAction('copy')} className="flex items-center justify-between px-5 py-3 text-white text-[15px] hover:bg-white/5 transition-colors group">
+                    <span>Copy</span>
+                    <Copy className="w-5 h-5 opacity-40 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                )}
+
+                <button onClick={() => onAction('star')} className="flex items-center justify-between px-5 py-3 text-white text-[15px] hover:bg-white/5 transition-colors group">
+                  <span>{isStarred ? 'Unstar' : 'Star'}</span>
+                  <Star className={`w-5 h-5 ${isStarred ? 'text-yellow-400' : 'opacity-40'} group-hover:opacity-100 transition-opacity`} fill={isStarred ? "currentColor" : "none"} />
                 </button>
 
                 {msg.type === 'text' && isMe && (
-                  <button onClick={() => onAction('edit')} className="menu-item">
-                    Edit <PenIcon className="w-4 h-4 text-white/50" />
+                  <button onClick={() => onAction('edit')} className="flex items-center justify-between px-5 py-3 text-white text-[15px] hover:bg-white/5 transition-colors group">
+                    <span>Edit</span>
+                    <PenIcon className="w-5 h-5 opacity-40 group-hover:opacity-100 transition-opacity" />
                   </button>
                 )}
 
-                {msg.type === 'text' && (
-                  <button onClick={() => onAction('copy')} className="menu-item">
-                    Copy <Copy className="w-4 h-4 text-white/50" />
+                {currentReaction && (
+                  <button onClick={() => onAction('react', null)} className="flex items-center justify-between px-5 py-3 text-white/50 text-[15px] hover:bg-white/5 transition-colors group">
+                    <span>Undo Reaction</span>
+                    <X className="w-5 h-5 opacity-40 group-hover:opacity-100 transition-opacity" />
                   </button>
                 )}
 
-                 <button onClick={() => onAction('star')} className="menu-item">
-                   {isStarred ? 'Unstar' : 'Star'} <StarIcon className={`w-4 h-4 ${isStarred ? 'text-yellow-400' : 'text-white/50'}`} filled={isStarred} />
-                 </button>
- 
-                 {currentReaction && (
-                   <button onClick={() => onAction('react', null)} className="menu-item text-white/70">
-                     Undo Reaction <X className="w-4 h-4" />
-                   </button>
-                 )}
- 
-                 <div className="h-[1px] bg-white/5 my-1" />
-
+                <div className="h-[1px] bg-white/[0.05] my-1 mx-4" />
 
                 {isMe && (
-                  <button onClick={() => onAction('delete')} className="menu-item text-red-500 hover:bg-red-500/10">
-                    Delete for everyone <Trash2 className="w-4 h-4 opacity-80" />
+                  <button onClick={() => onAction('delete')} className="flex items-center justify-between px-5 py-3 text-red-500 font-bold text-[15px] hover:bg-red-500/10 transition-colors group">
+                    <span>Delete for everyone</span>
+                    <Trash2 className="w-5 h-5 opacity-60 group-hover:opacity-100 transition-opacity" />
                   </button>
                 )}
 
-                <button onClick={() => onAction('delete_for_me')} className="menu-item text-red-400/70 hover:bg-red-500/5">
-                  Delete for me <Trash2 className="w-4 h-4 opacity-60" />
+                <button onClick={() => onAction('delete_for_me')} className="flex items-center justify-between px-5 py-3 text-red-500/70 font-bold text-[15px] hover:bg-red-500/5 transition-colors group">
+                   <span>Delete for me</span>
+                   <Trash2 className="w-5 h-5 opacity-40 group-hover:opacity-100 transition-opacity" />
                 </button>
               </div>
             </>

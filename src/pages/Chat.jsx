@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
   LogOut, Send, Mic, Phone, X, Reply, Paperclip, Loader2,
-  Trash2, Smile, Search, ArrowDownToLine, File, Settings, Upload
+  Trash2, Smile, Search, ArrowDownToLine, File, Settings, Upload, ChevronDown
 } from 'lucide-react';
 
 // Inline icon replacements for icons not in this lucide version
@@ -766,7 +766,11 @@ export default function Chat() {
             return (
               <div
                 key={msg.id}
-                className={`flex items-end gap-2 max-w-[90%] sm:max-w-[75%] ${isMe ? 'self-end flex-row-reverse' : 'self-start'} ${isLastInGroup ? 'mb-4' : 'mb-1'}`}
+                className={`flex items-end gap-2 max-w-[90%] sm:max-w-[75%] ${isMe ? 'self-end flex-row-reverse' : 'self-start'} ${
+                  isLastInGroup 
+                    ? (reaction ? 'mb-10' : 'mb-4') 
+                    : (reaction ? 'mb-7' : 'mb-1')
+                }`}
               >
                 <div className="hidden sm:block w-8 h-8 flex-shrink-0">
                   {isLastInGroup && (
@@ -788,7 +792,7 @@ export default function Chat() {
                     e.preventDefault();
                     setContextMenu({ isOpen: true, position: { x: e.clientX, y: e.clientY }, msg });
                   }}
-                  className={`relative px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-2xl ${isMe
+                  className={`relative px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-2xl ${isMe
                     ? 'rounded-br-[6px] bg-white text-black shadow-lg shadow-white/5'
                     : 'rounded-bl-[6px] bg-[#1a1a1a] border border-white/[0.04] text-white/90 shadow-2xl'
                   } text-[15px] leading-snug font-medium z-10 cursor-grab active:cursor-grabbing select-none`}
@@ -868,7 +872,7 @@ export default function Chat() {
                     </div>
 
                     {/* Integrated Corner Timestamp */}
-                    <div className={`absolute bottom-0 right-0 flex items-center gap-1 text-[10px] leading-none mb-[-2px] px-1 py-0.5 rounded-lg ${
+                    <div className={`absolute bottom-0 right-0 flex items-center gap-1.5 text-[10px] leading-none mb-[-2px] px-1 py-0.5 rounded-lg group/meta ${
                       msg.type === 'image' || msg.type === 'video' 
                         ? 'bg-black/40 backdrop-blur-sm text-white m-1' 
                         : isMe ? 'text-black/45' : 'text-white/25'
@@ -876,11 +880,20 @@ export default function Chat() {
                       {isEdited && <span className="italic opacity-70">edited</span>}
                       <span>{msg.created_at ? format(new Date(msg.created_at), 'HH:mm') : ''}</span>
                       {isMe && <StatusTick status={msg.status} />}
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setContextMenu({ isOpen: true, position: { x: e.clientX, y: e.clientY }, msg });
+                        }}
+                        className="opacity-0 group-hover/bubble:opacity-100 transition-opacity ml-1 hover:text-white"
+                      >
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
                     </div>
                   </div>
 
                   {reaction && (
-                    <div className={`absolute -bottom-3 ${isMe ? 'right-4' : 'left-4'} bg-[#1a1a1a] border border-white/10 rounded-full px-2 py-0.5 text-base shadow-xl hover:scale-110 transition-transform cursor-pointer`}>
+                    <div className={`absolute -bottom-[14px] left-[-2px] bg-[#202c33] border border-white/[0.1] rounded-full px-1.5 py-1 text-sm shadow-2xl hover:scale-110 transition-all cursor-pointer z-50`}>
                       {reaction}
                     </div>
                   )}
