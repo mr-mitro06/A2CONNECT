@@ -9,6 +9,11 @@ DROP POLICY IF EXISTS "Allow anon uploads" ON storage.objects;
 CREATE POLICY "Allow anon uploads" ON storage.objects
   FOR INSERT WITH CHECK (bucket_id = 'media');
 
+-- Allow anyone to update their own uploads (basic anon update)
+DROP POLICY IF EXISTS "Allow anon updates" ON storage.objects;
+CREATE POLICY "Allow anon updates" ON storage.objects
+  FOR UPDATE USING (bucket_id = 'media');
+
 -- Allow anyone to read from media bucket
 DROP POLICY IF EXISTS "Allow anon reads" ON storage.objects;
 CREATE POLICY "Allow anon reads" ON storage.objects

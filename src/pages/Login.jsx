@@ -77,6 +77,17 @@ export default function Login() {
           </button>
         </form>
       </motion.div>
+
+      <div className="absolute bottom-10 left-0 right-0 text-center z-10 font-['Outfit']">
+        <div className="space-y-1.5 opacity-40 hover:opacity-100 transition-opacity duration-700 cursor-default">
+          <p className="text-white/40 text-[11px] uppercase tracking-[0.4em] font-medium">
+            Made with <span className="text-red-500/60 text-[11px] mx-1">❤️</span> by <span className="text-white/60 tracking-widest font-bold ml-0.5">Abhinav Das</span>
+          </p>
+          <p className="text-white/20 text-[10px] uppercase tracking-[0.6em] font-bold">
+            FryLabs Studios
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

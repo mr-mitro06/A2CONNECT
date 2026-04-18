@@ -8,6 +8,7 @@ import PhotoViewer from '../components/PhotoViewer';
 import AudioPlayer from '../components/AudioPlayer';
 import MessageContextMenu from '../components/MessageContextMenu';
 import EmojiPicker from 'emoji-picker-react';
+import ChromeDino from '../components/ChromeDino';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
@@ -57,6 +58,20 @@ const decryptMsg = (msg) => {
 export default function Chat() {
   const { user, logout, refreshUser } = useAuth();
   
+  // Reusable Avatar Component for consistency
+  const Avatar = ({ src, name, size = "w-12 h-12", textSize = "text-lg", online = false }) => (
+    <div className="relative flex-shrink-0">
+      {src ? (
+        <img src={src} alt={name} className={`${size} rounded-full object-cover shadow-lg border border-white/10`} />
+      ) : (
+        <div className={`${size} rounded-full bg-gradient-to-tr from-zinc-800 to-neutral-700 shadow-inner flex items-center justify-center ${textSize} font-bold text-white/80`}>
+          {name?.[0]}
+        </div>
+      )}
+      {online && <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#111] shadow-[0_0_10px_rgba(16,185,129,0.6)]"></div>}
+    </div>
+  );
+
   // Guard for null user during loading
   if (!user) return <div className="h-screen bg-black" />;
 
@@ -79,6 +94,8 @@ export default function Chat() {
   const [partnerTyping, setPartnerTyping] = useState(false);
   const [partnerLastSeen, setPartnerLastSeen] = useState(null);
   const [partnerAvatar, setPartnerAvatar] = useState(null);
+  const [hideModeType, setHideModeType] = useState('dino'); // 'terminal' or 'dino'
+
 
 
   const [isRecording, setIsRecording] = useState(false);
@@ -225,7 +242,9 @@ export default function Chat() {
     const fallbackInterval = setInterval(syncMessages, 10000);
 
     // 4. Ephemeral Presence (Typing Indicator Only)
-    roomChannelRef.current = supabase.channel('chat-presence', {
+    // Create a unique room name based on alphabetized user IDs
+    const roomName = [user.id, partnerId].sort().join('-');
+    roomChannelRef.current = supabase.channel(`presence:${roomName}`, {
       config: { presence: { key: user.id } },
     });
     roomChannelRef.current
@@ -272,21 +291,31 @@ export default function Chat() {
   }, [messages, user.id]);
 
   const typingTimeoutRef = useRef(null);
+  const isLocalTyping = useRef(false);
+
   const handleTyping = (e) => {
     const val = e.target.value;
     setNewMessage(val);
     
-    // Debounced Track for Typing
     if (roomChannelRef.current) {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       
-      // Track as typing
-      roomChannelRef.current.track({ isTyping: val.length > 0 });
+      // Only track if state actually changed to avoid network spam
+      if (val.length > 0 && !isLocalTyping.current) {
+        isLocalTyping.current = true;
+        roomChannelRef.current.track({ isTyping: true });
+      } else if (val.length === 0 && isLocalTyping.current) {
+        isLocalTyping.current = false;
+        roomChannelRef.current.track({ isTyping: false });
+      }
       
-      // Auto-revert to non-typing after 2 seconds of inactivity
+      // Auto-revert to non-typing after 2.5 seconds of inactivity
       typingTimeoutRef.current = setTimeout(() => {
-        if (roomChannelRef.current) roomChannelRef.current.track({ isTyping: false });
-      }, 2000);
+        if (roomChannelRef.current && isLocalTyping.current) {
+          isLocalTyping.current = false;
+          roomChannelRef.current.track({ isTyping: false });
+        }
+      }, 2500);
     }
   };
 
@@ -297,6 +326,7 @@ export default function Chat() {
     localStorage.removeItem(`draft_${user.id}`);
     if (roomChannelRef.current) {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      isLocalTyping.current = false;
       roomChannelRef.current.track({ isTyping: false });
     }
 
@@ -434,27 +464,51 @@ export default function Chat() {
   };
 
   const handleProfileUpdate = async ({ name, avatarFile, nickname }) => {
-    if (nickname !== undefined) {
-      localStorage.setItem(`nickname_${user.id}_${partnerId}`, nickname);
-      setPNickname(nickname);
-    }
-
-    let finalAvatarUrl = user.avatar_url;
-    if (avatarFile) {
-      const fileName = `avatars/${user.id}_${Date.now()}`;
-      const { data, error } = await supabase.storage.from('media').upload(fileName, avatarFile, { upsert: true });
-      if (!error && data) {
-        finalAvatarUrl = supabase.storage.from('media').getPublicUrl(fileName).data.publicUrl;
+    try {
+      if (nickname !== undefined) {
+        localStorage.setItem(`nickname_${user.id}_${partnerId}`, nickname);
+        setPNickname(nickname);
       }
-    }
 
-    if (name || avatarFile) {
+      let finalAvatarUrl = user.avatar_url;
+      if (avatarFile) {
+        const fileName = `avatars/${user.id}_${Date.now()}_${avatarFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        console.log('Attempting upload to storage:', fileName);
+        
+        const { data, error: uploadError } = await supabase.storage.from('media').upload(fileName, avatarFile, { upsert: true });
+        
+        if (uploadError) {
+          console.error('Storage Upload Error Detail:', uploadError);
+          alert(`Storage Upload Failed: ${uploadError.message}. Please ensure you've run the SQL fix for storage policies.`);
+          return;
+        }
+
+        if (data) {
+          const { data: urlData } = supabase.storage.from('media').getPublicUrl(fileName);
+          finalAvatarUrl = urlData.publicUrl;
+          console.log('Upload successful. Public URL:', finalAvatarUrl);
+        }
+      }
+
       const updates = {};
-      if (name) updates.name = name;
+      if (name && name !== user.name) updates.name = name;
       if (avatarFile) updates.avatar_url = finalAvatarUrl;
-      
-      const { error } = await supabase.from('users').update(updates).eq('id', user.id);
-      if (!error) refreshUser();
+
+      if (Object.keys(updates).length > 0) {
+        console.log('Applying DB updates:', updates);
+        const { error: dbError } = await supabase.from('users').update(updates).eq('id', user.id);
+        
+        if (dbError) {
+          console.error('Database Update Error:', dbError);
+          alert(`Profile Update Failed: ${dbError.message}`);
+        } else {
+          console.log('Database updated successfully. Refreshing user...');
+          await refreshUser();
+        }
+      }
+    } catch (err) {
+      console.error('Unexpected Profile Update Error:', err);
+      alert(`An unexpected error occurred: ${err.message}`);
     }
   };
 
@@ -526,7 +580,13 @@ export default function Chat() {
 
   if (isHideMode) return (
     <>
-      <FakeTerminal />
+      {hideModeType === 'terminal' ? <FakeTerminal /> : <ChromeDino />}
+      <div 
+        onClick={() => setHideModeType(prev => prev === 'terminal' ? 'dino' : 'terminal')}
+        className="fixed bottom-4 left-4 z-[10000] text-[10px] text-white/10 uppercase tracking-widest cursor-pointer hover:text-white/40 transition-colors select-none"
+      >
+        Swap Decoy Mode
+      </div>
       <PrivacyEye toggleHide={setIsHideMode} isHidden={isHideMode} />
     </>
   );
@@ -570,7 +630,10 @@ export default function Chat() {
       {/* Sidebar */}
       <div className="hidden md:flex w-[350px] border-r border-white-[0.03] flex-col glass-panel rounded-none border-t-0 border-l-0 border-b-0">
         <div className="h-20 border-b border-white/[0.03] flex items-center justify-between px-6">
-          <div className="font-semibold text-xl tracking-tight text-white/90">A2Connect</div>
+          <div className="flex items-center gap-3">
+            <Avatar src={user.avatar_url} name={user.name} size="w-8 h-8" textSize="text-xs" />
+            <div className="font-semibold text-xl tracking-tight text-white/90">A2Connect</div>
+          </div>
           <div className="flex items-center gap-1">
             <button onClick={() => setShowSettings(true)} className="icon-btn hover:text-white"><Settings className="w-5 h-5" /></button>
             <button onClick={logout} className="icon-btn hover:text-red-400"><LogOut className="w-5 h-5" /></button>
@@ -578,20 +641,21 @@ export default function Chat() {
         </div>
         <div className="p-4">
           <div className="p-4 rounded-[1.5rem] bg-white/[0.04] border border-white/[0.03] flex items-center gap-4 cursor-pointer hover:bg-white/[0.08] transition-all duration-300">
-            <div className="relative">
-              {partnerAvatar ? (
-                <img src={partnerAvatar} alt={partnerName} className="w-12 h-12 rounded-full object-cover shadow-lg border border-white/10" />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-stone-800 to-neutral-700 shadow-inner flex items-center justify-center text-lg font-bold">
-                  {partnerName[0]}
-                </div>
-              )}
-              {partnerOnline && <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#111] shadow-[0_0_10px_rgba(16,185,129,0.6)]"></div>}
-            </div>
+            <Avatar src={partnerAvatar} name={partnerName} online={partnerOnline} />
             <div className="flex-1">
               <h3 className="font-medium text-white/90">{partnerName}</h3>
               <p className="text-white/40 text-sm truncate">{partnerTyping ? 'typing...' : 'Tap to secure chat'}</p>
             </div>
+          </div>
+        </div>
+        <div className="mt-auto p-8 border-t border-white/[0.03] text-center">
+          <div className="space-y-1">
+            <p className="text-[10px] text-white/20 uppercase tracking-[0.4em] font-medium font-['Outfit']">
+              Made with <span className="text-red-500/50 text-[10px] mx-0.5">❤️</span> by <span className="text-white/40 font-bold ml-1 tracking-widest font-['Outfit']">Abhinav Das</span>
+            </p>
+            <p className="text-white/10 text-[9px] uppercase tracking-[0.5em] font-bold font-['Outfit']">
+              FryLabs Studios
+            </p>
           </div>
         </div>
       </div>
@@ -616,16 +680,7 @@ export default function Chat() {
           ) : (
             <>
               <div className="flex items-center gap-3">
-                <div className="relative">
-                  {partnerAvatar ? (
-                    <img src={partnerAvatar} alt={partnerName} className="w-10 h-10 rounded-full object-cover border border-white/10" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-neutral-800 to-neutral-700 flex items-center justify-center font-bold text-white/50 text-sm">
-                      {partnerName[0]}
-                    </div>
-                  )}
-                  {partnerOnline && <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#0a0a0a]"></div>}
-                </div>
+                <Avatar src={partnerAvatar} name={partnerName} size="w-10 h-10" textSize="text-sm" online={partnerOnline} />
                 <div>
                   <h2 className="font-semibold text-white/90 leading-tight">{partnerName}</h2>
                   <div className="flex items-center gap-1.5">
@@ -640,6 +695,9 @@ export default function Chat() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <div className="md:hidden">
+                  <Avatar src={user.avatar_url} name={user.name} size="w-8 h-8" textSize="text-xs" />
+                </div>
                 <button onClick={() => setSearchMode(true)} className="icon-btn text-white/60 hover:text-white"><Search className="w-5 h-5" /></button>
                 <button className="icon-btn"><Phone className="w-5 h-5 text-white/70" /></button>
                 <button className="icon-btn md:hidden" onClick={() => setShowSettings(true)}><Settings className="w-5 h-5 text-white/70" /></button>
@@ -686,8 +744,13 @@ export default function Chat() {
                 key={msg.id}
                 className={`flex items-end gap-2 max-w-[90%] sm:max-w-[75%] ${isMe ? 'self-end flex-row-reverse' : 'self-start'}`}
               >
-                <div className={`hidden sm:flex w-8 h-8 rounded-full flex-shrink-0 items-center justify-center text-[11px] font-bold shadow-inner ${isMe ? 'bg-white text-black' : 'bg-neutral-800 text-white/70'}`}>
-                  {isMe ? user.name[0] : partnerName[0]}
+                <div className="hidden sm:block">
+                  <Avatar 
+                    src={isMe ? user.avatar_url : partnerAvatar} 
+                    name={isMe ? user.name : partnerName} 
+                    size="w-8 h-8" 
+                    textSize="text-[10px]" 
+                  />
                 </div>
 
                 <motion.div
