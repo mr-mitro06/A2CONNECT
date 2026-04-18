@@ -37,6 +37,8 @@ export default function MessageContextMenu({ position, msg, isMe, isStarred, onC
   if (!position || !msg) return null;
 
   // --- DYNAMIC AUTO-ALIGN LOGIC (RESPONSIVE) ---
+  const screenWidth = window.innerWidth;
+  const screenHeight = window.innerHeight;
   const isMobile = screenWidth < 480;
   const padding = isMobile ? 8 : 16;
   const targetMenuWidth = showFullPicker ? 300 : 410; 
