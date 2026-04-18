@@ -463,6 +463,27 @@ export default function Chat() {
     }
   };
 
+  const handleClearChat = async () => {
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .delete()
+        .or(`and(sender_id.eq.${user.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${user.id})`);
+
+      if (error) {
+        alert(`Failed to clear chat: ${error.message}`);
+        return;
+      }
+      setMessages([]);
+      setReplyingTo(null);
+      setEditingMsg(null);
+      localStorage.removeItem(`draft_${user.id}`);
+      console.log('Chat history cleared permanently.');
+    } catch (err) {
+      console.error('Error clearing chat:', err);
+    }
+  };
+
   const handleProfileUpdate = async ({ name, avatarFile, nickname }) => {
     try {
       if (nickname !== undefined) {
@@ -708,15 +729,18 @@ export default function Chat() {
         </div>
 
         {/* Message Area */}
-        <div className="flex-1 p-4 sm:p-6 overflow-y-auto flex flex-col gap-5 scrollbar-hide">
+        <div className="flex-1 p-4 sm:p-6 overflow-y-auto flex flex-col scrollbar-hide">
           <div className="text-center text-[11px] text-white/30 my-4 uppercase tracking-[0.2em] font-medium flex items-center justify-center gap-4">
             <div className="h-[1px] flex-1 bg-white/[0.03]"></div>
             E2E Encrypted Room
             <div className="h-[1px] flex-1 bg-white/[0.03]"></div>
           </div>
 
-          {filteredMessages.map((msg) => {
+          {filteredMessages.map((msg, idx) => {
             const isMe = msg.sender_id === user.id;
+            const isLastInGroup = filteredMessages[idx + 1]?.sender_id !== msg.sender_id;
+            const isFirstInGroup = filteredMessages[idx - 1]?.sender_id !== msg.sender_id;
+            
             let messageText = '', replyText = null, replySender = null, reaction = null, isEdited = false;
 
             if (msg.type === 'text') {
@@ -742,15 +766,17 @@ export default function Chat() {
             return (
               <div
                 key={msg.id}
-                className={`flex items-end gap-2 max-w-[90%] sm:max-w-[75%] ${isMe ? 'self-end flex-row-reverse' : 'self-start'}`}
+                className={`flex items-end gap-2 max-w-[90%] sm:max-w-[75%] ${isMe ? 'self-end flex-row-reverse' : 'self-start'} ${isLastInGroup ? 'mb-4' : 'mb-1'}`}
               >
-                <div className="hidden sm:block">
-                  <Avatar 
-                    src={isMe ? user.avatar_url : partnerAvatar} 
-                    name={isMe ? user.name : partnerName} 
-                    size="w-8 h-8" 
-                    textSize="text-[10px]" 
-                  />
+                <div className="hidden sm:block w-8 h-8 flex-shrink-0">
+                  {isLastInGroup && (
+                    <Avatar 
+                      src={isMe ? user.avatar_url : partnerAvatar} 
+                      name={isMe ? user.name : partnerName} 
+                      size="w-8 h-8" 
+                      textSize="text-[10px]" 
+                    />
+                  )}
                 </div>
 
                 <motion.div
@@ -785,61 +811,72 @@ export default function Chat() {
                       </div>
                     </div>
                   )}
+                             <div className="relative">
+                    {/* Message Body Content */}
+                    <div className={msg.type === 'text' ? 'pr-[50px] min-w-[70px]' : ''}>
+                      {msg.type === 'audio' && <AudioPlayer src={typeof msg.content === 'string' ? msg.content : msg.content?.url} isMe={isMe} />}
 
-                  {msg.type === 'audio' && <AudioPlayer src={typeof msg.content === 'string' ? msg.content : msg.content?.url} isMe={isMe} />}
+                      {msg.type === 'image' && (
+                        msg.status === 'error' ? (
+                          <div className="flex items-center gap-2 text-red-400 text-sm px-1"><span>⚠️ Upload failed</span></div>
+                        ) : (
+                          <div className={`cursor-pointer overflow-hidden rounded-xl border border-white/10 relative ${msg.status === 'sending' ? 'opacity-70' : ''}`}
+                            onClick={() => mediaUrl && !mediaUrl.startsWith('blob:') && setViewedPhoto(mediaUrl)}>
+                            <img src={mediaUrl} alt="media" className="max-w-[240px] max-h-[300px] object-cover hover:scale-105 transition-transform duration-500" />
+                            {msg.status === 'sending' && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div></div>}
+                          </div>
+                        )
+                      )}
 
-                  {msg.type === 'image' && (
-                    msg.status === 'error' ? (
-                      <div className="flex items-center gap-2 text-red-400 text-sm px-1"><span>⚠️ Upload failed</span></div>
-                    ) : (
-                      <div className={`cursor-pointer overflow-hidden rounded-xl border border-white/10 relative ${msg.status === 'sending' ? 'opacity-70' : ''}`}
-                        onClick={() => mediaUrl && !mediaUrl.startsWith('blob:') && setViewedPhoto(mediaUrl)}>
-                        <img src={mediaUrl} alt="media" className="max-w-[240px] max-h-[300px] object-cover hover:scale-105 transition-transform duration-500" />
-                        {msg.status === 'sending' && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div></div>}
-                      </div>
-                    )
-                  )}
+                      {msg.type === 'video' && (
+                        msg.status === 'error' ? (
+                          <div className="flex items-center gap-2 text-red-400 text-sm"><span>⚠️ Video upload failed</span></div>
+                        ) : (
+                          <div className={`overflow-hidden rounded-xl border border-white/10 bg-black/50 relative ${msg.status === 'sending' ? 'opacity-70' : ''}`}>
+                            <video src={mediaUrl} controls className="max-w-[240px] max-h-[300px] outline-none" preload="metadata" />
+                            {msg.status === 'sending' && <div className="absolute inset-0 flex items-center justify-center bg-black/60"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div></div>}
+                          </div>
+                        )
+                      )}
 
-                  {msg.type === 'video' && (
-                    msg.status === 'error' ? (
-                      <div className="flex items-center gap-2 text-red-400 text-sm"><span>⚠️ Video upload failed</span></div>
-                    ) : (
-                      <div className={`overflow-hidden rounded-xl border border-white/10 bg-black/50 relative ${msg.status === 'sending' ? 'opacity-70' : ''}`}>
-                        <video src={mediaUrl} controls className="max-w-[240px] max-h-[300px] outline-none" preload="metadata" />
-                        {msg.status === 'sending' && <div className="absolute inset-0 flex items-center justify-center bg-black/60"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div></div>}
-                      </div>
-                    )
-                  )}
+                      {msg.type === 'file' && (
+                        <a
+                          href={mediaUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={msg.fileName}
+                          className={`flex items-center gap-3 py-1 pr-[45px] no-underline ${isMe ? 'text-black' : 'text-white'}`}
+                        >
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isMe ? 'bg-black/10' : 'bg-white/10'}`}>
+                            <File className="w-5 h-5" />
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-sm font-semibold truncate max-w-[120px]">{msg.fileName || 'File'}</span>
+                            <span className={`text-xs opacity-50`}>
+                              {msg.fileSize ? `${(msg.fileSize / 1024).toFixed(0)} KB` : ''}
+                            </span>
+                          </div>
+                          <ArrowDownToLine className="w-4 h-4 opacity-40 flex-shrink-0" />
+                        </a>
+                      )}
 
-                  {msg.type === 'file' && (
-                    <a
-                      href={mediaUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      download={msg.fileName}
-                      className={`flex items-center gap-3 py-1 pr-2 no-underline ${isMe ? 'text-black' : 'text-white'}`}
-                    >
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isMe ? 'bg-black/10' : 'bg-white/10'}`}>
-                      <File className="w-5 h-5" />
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-sm font-semibold truncate max-w-[160px]">{msg.fileName || 'File'}</span>
-                        <span className={`text-xs ${isMe ? 'text-black/50' : 'text-white/40'}`}>
-                          {msg.fileSize ? `${(msg.fileSize / 1024).toFixed(0)} KB` : ''} · Tap to download
-                        </span>
-                      </div>
-                      <ArrowDownToLine className="w-4 h-4 opacity-60 flex-shrink-0" />
-                    </a>
-                  )}
+                      {msg.type === 'text' && (
+                        <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">
+                          {messageText}
+                        </p>
+                      )}
+                    </div>
 
-                  {msg.type === 'text' && (
-                    <span className="whitespace-pre-wrap break-words">{messageText}</span>
-                  )}
-
-                  <div className={`text-[10px] mt-1 flex items-center gap-1 justify-end ${isMe ? 'text-black/50' : 'text-white/30'}`}>
-                    {isEdited && <span className="mr-1 italic">edited</span>}
-                    <span>{msg.created_at ? format(new Date(msg.created_at), 'HH:mm') : ''}</span>
-                    {isMe && <StatusTick status={msg.status} />}
+                    {/* Integrated Corner Timestamp */}
+                    <div className={`absolute bottom-0 right-0 flex items-center gap-1 text-[10px] leading-none mb-[-2px] px-1 py-0.5 rounded-lg ${
+                      msg.type === 'image' || msg.type === 'video' 
+                        ? 'bg-black/40 backdrop-blur-sm text-white m-1' 
+                        : isMe ? 'text-black/45' : 'text-white/25'
+                    }`}>
+                      {isEdited && <span className="italic opacity-70">edited</span>}
+                      <span>{msg.created_at ? format(new Date(msg.created_at), 'HH:mm') : ''}</span>
+                      {isMe && <StatusTick status={msg.status} />}
+                    </div>
                   </div>
 
                   {reaction && (
@@ -861,6 +898,7 @@ export default function Chat() {
             pNickname={pNickname}
             onClose={() => setShowSettings(false)} 
             onUpdate={handleProfileUpdate} 
+            onClearChat={handleClearChat}
           />
         )}
 
@@ -995,12 +1033,13 @@ export default function Chat() {
 
 // --- Sub-components ---
 
-function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate }) {
+function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate, onClearChat }) {
   const [name, setName] = useState(user.name || '');
   const [nickname, setNickname] = useState(pNickname || '');
   const [avatarPreview, setAvatarPreview] = useState(user.avatar_url || null);
   const [avatarFile, setAvatarFile] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const fileRef = useRef(null);
 
   const handleSave = async () => {
@@ -1015,87 +1054,138 @@ function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate }) {
   };
 
   return (
-    <motion.div 
-      initial={{ opacity: 0 }} 
-      animate={{ opacity: 1 }} 
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
-    >
+    <>
       <motion.div 
-        initial={{ scale: 0.9, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        className="w-full max-w-md glass-panel p-8 rounded-[2.5rem] relative border border-white/10"
+        initial={{ opacity: 0 }} 
+        animate={{ opacity: 1 }} 
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
       >
-        <button onClick={onClose} className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors">
-          <X className="w-6 h-6" />
-        </button>
+        <motion.div 
+          initial={{ scale: 0.9, y: 20 }}
+          animate={{ scale: 1, y: 0 }}
+          className="w-full max-w-md glass-panel p-8 rounded-[2.5rem] relative border border-white/10"
+        >
+          <button onClick={onClose} className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors">
+            <X className="w-6 h-6" />
+          </button>
 
-        <h2 className="text-2xl font-bold text-white mb-2">Settings</h2>
-        <p className="text-white/40 mb-8 text-sm">Customize your A2Connect identity</p>
+          <h2 className="text-2xl font-bold text-white mb-2">Settings</h2>
+          <p className="text-white/40 mb-8 text-sm">Customize your A2Connect identity</p>
 
-        <div className="flex flex-col items-center mb-8">
-          <div 
-            onClick={() => fileRef.current?.click()}
-            className="group relative w-24 h-24 rounded-full cursor-pointer overflow-hidden border-2 border-emerald-500/30 hover:border-emerald-500 transition-all shadow-2xl"
-          >
-            {avatarPreview ? (
-              <img src={avatarPreview} className="w-full h-full object-cover" alt="Profile" />
-            ) : (
-              <div className="w-full h-full bg-neutral-800 flex items-center justify-center text-3xl font-bold">
-                {user.name[0]}
+          <div className="flex flex-col items-center mb-8">
+            <div 
+              onClick={() => fileRef.current?.click()}
+              className="group relative w-24 h-24 rounded-full cursor-pointer overflow-hidden border-2 border-emerald-500/30 hover:border-emerald-500 transition-all shadow-2xl"
+            >
+              {avatarPreview ? (
+                <img src={avatarPreview} className="w-full h-full object-cover" alt="Profile" />
+              ) : (
+                <div className="w-full h-full bg-neutral-800 flex items-center justify-center text-3xl font-bold">
+                  {user.name?.[0]}
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <Upload className="w-6 h-6 text-white" />
               </div>
-            )}
-            <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <Upload className="w-6 h-6 text-white" />
+            </div>
+            <input 
+              type="file" 
+              ref={fileRef} 
+              className="hidden" 
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  setAvatarFile(file);
+                  setAvatarPreview(URL.createObjectURL(file));
+                }
+              }}
+            />
+            <p className="mt-3 text-emerald-400 text-xs font-semibold uppercase tracking-widest">Change Profile Photo</p>
+          </div>
+
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest ml-1">Your Display Name</label>
+              <input 
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-white outline-none focus:border-emerald-500/50 transition-all font-medium"
+                placeholder="Enter your name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest ml-1">Nickname for {partnerName.split(' ')[0]}</label>
+              <input 
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-white outline-none focus:border-emerald-500/50 transition-all font-medium"
+                placeholder="Enter a private alias"
+              />
+              <p className="text-[10px] text-white/20 ml-1">Only you can see this nickname locally.</p>
+            </div>
+
+            <div className="pt-4 border-t border-white/5 flex flex-col gap-3">
+              <button 
+                onClick={handleSave}
+                disabled={isSaving}
+                className="w-full py-4 bg-white text-black font-bold rounded-2xl hover:bg-neutral-200 transition-all active:scale-95 disabled:opacity-50"
+              >
+                {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Save Profile Changes'}
+              </button>
+              
+              <button 
+                onClick={() => setShowClearConfirm(true)}
+                className="w-full py-3 text-red-500/80 font-bold text-sm tracking-wide hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all"
+              >
+                Clear Message History
+              </button>
             </div>
           </div>
-          <input 
-            type="file" 
-            ref={fileRef} 
-            className="hidden" 
-            accept="image/*"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                setAvatarFile(file);
-                setAvatarPreview(URL.createObjectURL(file));
-              }
-            }}
-          />
-          <p className="mt-3 text-emerald-400 text-xs font-semibold uppercase tracking-widest">Change Profile Photo</p>
-        </div>
-
-        <div className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest ml-1">Your Display Name</label>
-            <input 
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-white outline-none focus:border-emerald-500/50 transition-all font-medium"
-              placeholder="Enter your name"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest ml-1">Nickname for {partnerName.split(' ')[0]}</label>
-            <input 
-              value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-white outline-none focus:border-emerald-500/50 transition-all font-medium"
-              placeholder="Enter a private alias"
-            />
-            <p className="text-[10px] text-white/20 ml-1">Only you can see this nickname locally.</p>
-          </div>
-        </div>
-
-        <button 
-          onClick={handleSave}
-          disabled={isSaving}
-          className="w-full mt-10 bg-white text-black font-bold py-4 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-        >
-          {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Save Changes'}
-        </button>
+        </motion.div>
       </motion.div>
-    </motion.div>
+
+      {/* --- Confirmation Modal --- */}
+      <AnimatePresence>
+        {showClearConfirm && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-center">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-[340px] bg-[#1a2126] p-6 rounded-[2rem] border border-white/5 shadow-2xl"
+            >
+              <h3 className="text-white text-lg font-medium leading-tight mb-3">
+                Are you sure you want to delete all message history with {partnerName}?
+              </h3>
+              <p className="text-white/60 text-sm mb-8 leading-relaxed">
+                This action cannot be undone.
+              </p>
+              
+              <div className="flex justify-end gap-6 items-center px-4">
+                <button 
+                  onClick={() => setShowClearConfirm(false)}
+                  className="text-emerald-400 font-bold text-[15px] hover:opacity-80 transition-opacity"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={async () => {
+                    await onClearChat();
+                    setShowClearConfirm(false);
+                    onClose();
+                  }}
+                  className="text-red-400 font-bold text-[15px] hover:opacity-80 transition-opacity"
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
