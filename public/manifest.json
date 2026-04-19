@@ -1,20 +1,21 @@
 {
   "name": "A2Connect",
   "short_name": "A2Connect",
-  "start_url": ".",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
   "description": "Secure End-to-End Encrypted Messaging",
   "icons": [
     {
-      "src": "https://a2connect.vercel.app/logo.png",
+      "src": "/logo.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "https://a2connect.vercel.app/logo.png",
+      "src": "/logo.png",
       "sizes": "512x512",
       "type": "image/png"
     }
