@@ -282,6 +282,10 @@ export default function Chat() {
   const [searchQuery, setSearchQuery] = useState('');
   const [msgInfoData, setMsgInfoData] = useState(null);
   const [highlightedMsgId, setHighlightedMsgId] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteType, setDeleteType] = useState('me'); // 'me' or 'everyone'
+  const [showCallDisclaimer, setShowCallDisclaimer] = useState(false);
 
   // Helper to Highlight Search Matches
   const highlightMatch = (text, query) => {
@@ -803,20 +807,14 @@ export default function Chat() {
       navigator.clipboard.writeText(t || '');
     }
     else if (action === 'delete') {
-      setMessages(prev => prev.filter(x => x.id !== m.id));
-      await supabase.from('messages').delete().eq('id', m.id);
-
-      // Clean up storage if it's a media message
-      if (m.type === 'image' || m.type === 'video') {
-        const mediaUrl = typeof m.content === 'string' ? m.content : m.content?.url;
-        if (mediaUrl) {
-          const fileName = mediaUrl.split('/').pop();
-          if (fileName) await supabase.storage.from('media').remove([fileName]);
-        }
-      }
+      setDeleteTarget(m);
+      setDeleteType('everyone');
+      setShowDeleteConfirm(true);
     }
     else if (action === 'delete_for_me') {
-      setMessages(prev => prev.filter(x => x.id !== m.id));
+      setDeleteTarget(m);
+      setDeleteType('me');
+      setShowDeleteConfirm(true);
     }
     else if (action === 'edit') {
       if (m.type !== 'text') return;
@@ -1035,7 +1033,12 @@ export default function Chat() {
                   >
                     <A2StarIcon className="w-5 h-5" />
                   </button>
-                  <button className="icon-btn text-white/40 hover:text-white"><Phone className="w-5 h-5" /></button>
+                  <button 
+                    onClick={() => setShowCallDisclaimer(true)}
+                    className="icon-btn text-white/40 hover:text-white"
+                  >
+                    <Phone className="w-5 h-5" />
+                  </button>
                 </div>
 
 
@@ -1721,6 +1724,73 @@ export default function Chat() {
           </div>
         )}
       </AnimatePresence>
+      <DeleteConfirmModal 
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          const { id, type, content } = deleteTarget;
+          
+          if (deleteType === 'everyone') {
+            // Delete for everyone
+            setMessages(prev => prev.filter(x => x.id !== id));
+            await supabase.from('messages').delete().eq('id', id);
+
+            if (type === 'image' || type === 'video') {
+              const mediaUrl = typeof content === 'string' ? content : content?.url;
+              if (mediaUrl) {
+                const fileName = mediaUrl.split('/').pop();
+                if (fileName) await supabase.storage.from('media').remove([fileName]);
+              }
+            }
+          } else {
+            // Delete for me
+            setMessages(prev => prev.filter(x => x.id !== id));
+          }
+          setShowDeleteConfirm(false);
+          setDeleteTarget(null);
+        }}
+        type={deleteType}
+      />
+
+      {/* --- Call Disclaimer Modal --- */}
+      <AnimatePresence>
+        {showCallDisclaimer && (
+          <div 
+            className="fixed inset-0 z-[2000000] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" 
+            onClick={() => setShowCallDisclaimer(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, rotate: -2 }}
+              animate={{ scale: 1, opacity: 1, rotate: 0 }}
+              exit={{ scale: 0.9, opacity: 0, rotate: 2 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-[320px] bg-[#1a1c1e] rounded-[2.5rem] border border-white/10 p-8 shadow-2xl text-center relative overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500/0 via-emerald-500 to-emerald-500/0" />
+              
+              <div className="w-16 h-16 bg-emerald-500/10 rounded-[2rem] flex items-center justify-center mx-auto mb-6 text-emerald-400">
+                <Phone className="w-8 h-8" />
+              </div>
+
+              <h3 className="text-xl font-bold text-white mb-4 leading-tight">
+                "Athin nammakk neritt phone vilikam ithilude enthu?"
+              </h3>
+              
+              <p className="text-white/40 text-xs mb-8 italic">
+                A2Connect is for secure text & media sharing only. Stay safe!
+              </p>
+
+              <button 
+                onClick={() => setShowCallDisclaimer(false)}
+                className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl active:scale-95 transition-all shadow-lg shadow-emerald-500/20"
+              >
+                Okay, Noted!
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1883,5 +1953,48 @@ function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate, onClea
 
       {/* --- Message Info Modal --- */}
     </>
+  );
+}
+function DeleteConfirmModal({ isOpen, onClose, onConfirm, type }) {
+  if (!isOpen) return null;
+  return (
+    <AnimatePresence>
+      <div className="fixed inset-0 z-[2000000] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 text-center" onClick={onClose}>
+        <motion.div 
+          initial={{ scale: 0.95, opacity: 0, y: 10 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.95, opacity: 0, y: 10 }}
+          onClick={e => e.stopPropagation()}
+          className="w-full max-w-[320px] bg-[#1a1c1e] rounded-[2rem] border border-white/10 p-6 shadow-2xl"
+        >
+          <div className="w-14 h-14 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 text-red-500">
+            <Trash2 className="w-7 h-7" />
+          </div>
+          <h3 className="text-lg font-bold text-white mb-2">
+            Delete Message?
+          </h3>
+          <p className="text-white/40 text-xs mb-8 leading-relaxed">
+            {type === 'everyone' 
+              ? "This message will be permanently removed for both participants. This action cannot be undone." 
+              : "This message will be removed from your view only."}
+          </p>
+
+          <div className="flex flex-col gap-2">
+            <button 
+              onClick={onConfirm}
+              className="w-full py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl active:scale-95 transition-all shadow-lg shadow-red-500/20"
+            >
+              Delete
+            </button>
+            <button 
+              onClick={onClose}
+              className="w-full py-3 bg-white/5 hover:bg-white/10 text-white/60 font-medium rounded-xl transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    </AnimatePresence>
   );
 }
