@@ -184,6 +184,157 @@ import {
   Trash2, Smile, Search, ArrowDownToLine, File, Settings, Upload, ChevronDown, Calendar, MoreVertical, Pin, Star, Copy, Plus
 } from 'lucide-react';
 
+// --- Shared Components for Memoization Support ---
+const StatusTick = ({ status }) => {
+  if (status === 'sending') return <span className="text-white/20">○</span>;
+  if (status === 'sent') return <svg viewBox="0 0 16 15" width="14" height="13" className="fill-current opacity-50"><path d="M15.01 3.316l-.478-.372a.365.365 0 0 0-.51.063L8.666 9.879a.32.32 0 0 1-.484.033l-.358-.325a.319.319 0 0 0-.484.032l-.378.483a.418.418 0 0 0 .036.541l1.32 1.266c.143.14.361.125.484-.033l6.272-8.048a.366.366 0 0 0-.064-.512z"/></svg>;
+  if (status === 'delivered') return <svg viewBox="0 0 16 15" width="14" height="13" className="fill-current opacity-60"><path d="M15.01 3.316l-.478-.372a.365.365 0 0 0-.51.063L8.666 9.879a.32.32 0 0 1-.484.033L1.891 7.769a.366.366 0 0 0-.515.006l-.423.433a.364.364 0 0 0 .006.514l3.258 3.185c.143.136.361.125.484-.033l6.272-8.048a.365.365 0 0 0-.063-.51z"/></svg>;
+  if (status === 'seen') return <svg viewBox="0 0 16 15" width="14" height="13" className="fill-blue-400"><path d="M15.01 3.316l-.478-.372a.365.365 0 0 0-.51.063L8.666 9.879a.32.32 0 0 1-.484.033l-.358-.325a.319.319 0 0 0-.484.032l-.378.483a.418.418 0 0 0 .036.541l1.32 1.266c.143.14.361.125.484-.033l6.272-8.048a.366.366 0 0 0-.064-.512zm-4.1 0l-.478-.372a.365.365 0 0 0-.51.063L4.566 9.879a.32.32 0 0 1-.484.033L1.891 7.769a.366.366 0 0 0-.515.006l-.423.433a.364.364 0 0 0 .006.514l3.258 3.185c.143.136.361.125.484-.033l6.272-8.048a.365.365 0 0 0-.063-.51z"/></svg>;
+  return null;
+};
+
+const Avatar = ({ src, name, size = "w-12 h-12", textSize = "text-lg", online = false }) => (
+  <div className="relative flex-shrink-0">
+    {src ? (
+      <img src={src} alt={name} className={`${size} rounded-full object-cover shadow-lg border border-white/10`} />
+    ) : (
+      <div className={`${size} rounded-full bg-gradient-to-tr from-zinc-800 to-neutral-700 shadow-inner flex items-center justify-center ${textSize} font-bold text-white/80`}>
+        {name?.[0]}
+      </div>
+    )}
+    {online && <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#111] shadow-[0_0_10px_rgba(16,185,129,0.6)]"></div>}
+  </div>
+);
+
+const MessageBubble = React.memo(({ 
+  msg, isMe, user, partnerName, partnerAvatar, 
+  showDateDivider, dateStr, showUnreadMarker, unreadCount, 
+  isLastInGroup, highlightedMsgId, searchMode, searchQuery, 
+  highlightMatch, setReplyingTo, setContextMenu, setViewedPhoto, 
+  inputRef
+}) => {
+  let messageText = '';
+  let reaction = null;
+  let isEdited = false;
+  let replyText = null;
+  let replySender = '';
+
+  // Data processing logic isolated inside the memoized bubble
+  if (msg.type === 'text') {
+    if (typeof msg.content === 'object' && msg.content !== null) {
+      messageText = msg.content.text || '';
+      reaction = msg.content.reaction ?? null;
+      isEdited = msg.content.edited ?? false;
+      if (msg.content.reply_text) {
+        replyText = msg.content.reply_text;
+        replySender = msg.content.reply_sender;
+      }
+    } else {
+      messageText = msg.content || '';
+    }
+  } else if (typeof msg.content === 'object' && msg.content !== null) {
+    reaction = msg.content.reaction ?? null;
+    if (msg.content.reply_text) {
+      replyText = msg.content.reply_text;
+      replySender = msg.content.reply_sender;
+    }
+  }
+
+  const mediaUrl = typeof msg.content === 'string' ? msg.content : (msg.content?.url || msg.content);
+  const isStarred = typeof msg.content === 'object' && msg.content?.is_starred;
+
+  return (
+    <React.Fragment>
+      {showDateDivider && (
+        <div className="flex justify-center my-6 relative z-10">
+          <div className="px-4 py-1.5 bg-[#ffffff]/5 backdrop-blur-md rounded-xl text-[11px] text-white/40 font-bold uppercase tracking-widest border border-white/5">{dateStr}</div>
+        </div>
+      )}
+
+      {showUnreadMarker && (
+         <div className="flex justify-center my-6 relative z-10">
+           <div className="px-5 py-2 bg-emerald-500/10 backdrop-blur-xl border border-emerald-500/20 rounded-full text-[11px] text-emerald-400 font-bold shadow-lg shadow-emerald-500/5">
+             {unreadCount} Unread Messages
+           </div>
+         </div>
+      )}
+
+      <div id={`msg-${msg.id}`} className={`flex items-end gap-2 max-w-[90%] sm:max-w-[75%] relative z-10 ${isMe ? 'self-end flex-row-reverse' : 'self-start'} ${isLastInGroup ? (reaction ? 'mb-12' : 'mb-4') : (reaction ? 'mb-9' : 'mb-1')}`}>
+        <div className="hidden sm:block w-8 h-8 flex-shrink-0">
+          {isLastInGroup && <Avatar src={isMe ? user.avatar_url : partnerAvatar} name={isMe ? user.name : partnerName} size="w-8 h-8" textSize="text-[10px]" />}
+        </div>
+
+        <motion.div
+          drag="x"
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.1}
+          onDragEnd={(e, info) => { 
+            if (info.offset.x > 50) {
+              setReplyingTo(msg);
+              setTimeout(() => inputRef.current?.focus(), 50);
+            } 
+          }}
+          onContextMenu={(e) => { e.preventDefault(); setContextMenu({ isOpen: true, position: { x: e.clientX, y: e.clientY }, msg }); }}
+          animate={{
+            x: 0,
+            scale: highlightedMsgId === msg.id ? 1.03 : 1,
+            boxShadow: highlightedMsgId === msg.id 
+              ? (isMe ? "0 0 30px rgba(255,255,255,0.3)" : "0 0 30px rgba(16,185,129,0.3)")
+              : (isMe ? "0 10px 15px -3px rgba(255,255,255,0.05)" : "0 25px 50px -12px rgba(0,0,0,0.5)")
+          }}
+          transition={{ duration: 0.8 }}
+          className={`relative px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-2xl ${isMe ? 'rounded-br-[6px] bg-white text-black shadow-lg shadow-white/5' : 'rounded-bl-[6px] bg-[#1a1a1a] border border-white/[0.04] text-white/90 shadow-2xl'} text-[15px] leading-snug font-medium z-10 cursor-grab active:cursor-grabbing select-none w-fit max-w-full group/bubble`}
+        >
+          {isStarred && <div className={`absolute -top-2 ${isMe ? 'left-2' : 'right-2'} text-yellow-400 text-xs`}>⭐</div>}
+
+          {replyText && (
+            <div className={`mb-2 pl-3 py-1 pr-3 rounded-lg border-l-2 text-[13px] overflow-hidden ${isMe ? 'bg-black/[0.04] border-black/20' : 'bg-white/[0.04] border-emerald-500/50'}`}>
+              <div className={`font-bold text-[10px] uppercase tracking-wide mb-0.5 ${isMe ? 'text-black/60' : 'text-emerald-400'}`}>{replySender}</div>
+              <div className={`line-clamp-1 leading-tight ${isMe ? 'text-black/70' : 'text-white/60'}`}>{replyText}</div>
+            </div>
+          )}
+
+          <div className="relative">
+            {msg.type === 'audio' && <AudioPlayer src={mediaUrl} isMe={isMe} />}
+            {msg.type === 'image' && (
+              <div className={`cursor-pointer overflow-hidden rounded-xl border border-white/10 relative select-none touch-none ${msg.status === 'sending' ? 'opacity-70' : ''}`}
+                  onClick={() => mediaUrl && !mediaUrl.startsWith('blob:') && setViewedPhoto(mediaUrl)}>
+                <img src={mediaUrl} alt="media" className="max-w-[240px] max-h-[300px] object-cover hover:scale-105 transition-transform duration-500" />
+                {msg.status === 'sending' && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div></div>}
+              </div>
+            )}
+            {msg.type === 'video' && (
+               <div className={`overflow-hidden rounded-xl border border-white/10 bg-black/50 relative ${msg.status === 'sending' ? 'opacity-70' : ''}`}>
+                 <video src={mediaUrl} controls className="max-w-[240px] max-h-[300px] outline-none" preload="metadata" />
+               </div>
+            )}
+            {msg.type === 'file' && (
+              <a href={mediaUrl} target="_blank" rel="noopener noreferrer" download={msg.fileName} className={`flex items-center gap-3 py-1 pr-[45px] no-underline ${isMe ? 'text-black' : 'text-white'}`}>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isMe ? 'bg-black/10' : 'bg-white/10'}`}><File className="w-5 h-5" /></div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-sm font-semibold truncate max-w-[120px]">{msg.fileName || 'File'}</span>
+                  <span className="text-xs opacity-50">{msg.fileSize ? `${(msg.fileSize / 1024).toFixed(0)} KB` : ''}</span>
+                </div>
+                <ArrowDownToLine className="w-4 h-4 opacity-40 flex-shrink-0" />
+              </a>
+            )}
+            <div className="flex flex-wrap items-end justify-end gap-x-2 gap-y-0.5 mt-0.5">
+              {msg.type === 'text' && <p className="flex-1 whitespace-pre-wrap break-words text-[15px] leading-relaxed min-w-0">{searchMode ? highlightMatch(messageText, searchQuery) : messageText}</p>}
+              <div className={`flex items-center gap-1.5 text-[10px] leading-none mb-[1px] ${msg.type === 'image' || msg.type === 'video' ? 'absolute bottom-1.5 right-1.5 bg-black/40 backdrop-blur-md text-white px-1.5 py-1 rounded-lg z-20' : isMe ? 'text-black/50 ml-auto' : 'text-white/30 ml-auto'}`}>
+                {isEdited && <span className="italic opacity-70">edited</span>}
+                <span>{msg.created_at ? format(new Date(msg.created_at), 'HH:mm') : ''}</span>
+                {isMe && <StatusTick status={msg.status} />}
+                <button onClick={(e) => { e.stopPropagation(); setContextMenu({ isOpen: true, position: { x: e.clientX, y: e.clientY }, msg }); }} className="opacity-0 group-hover/bubble:opacity-100 transition-opacity ml-0.5 hover:text-emerald-500"><ChevronDown className="w-3.5 h-3.5" /></button>
+              </div>
+            </div>
+          </div>
+          {reaction && <div className={`absolute -bottom-[18px] left-[-2px] bg-[#202c33] border border-white/[0.1] rounded-full px-2 py-1 text-sm shadow-2xl hover:scale-110 transition-all cursor-pointer z-[60]`}>{reaction}</div>}
+        </motion.div>
+      </div>
+    </React.Fragment>
+  );
+});
+
 const A2InfoIcon = ({ className }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
@@ -356,20 +507,6 @@ export default function Chat() {
 
   const partnerId = user.id === 'user_abhi' ? 'user_arya' : 'user_abhi';
   const partnerName = pNickname || (user.id === 'user_abhi' ? 'Arya' : 'Abhi');
-
-  // Reusable Avatar Component
-  const Avatar = ({ src, name, size = "w-12 h-12", textSize = "text-lg", online = false }) => (
-    <div className="relative flex-shrink-0">
-      {src ? (
-        <img src={src} alt={name} className={`${size} rounded-full object-cover shadow-lg border border-white/10`} />
-      ) : (
-        <div className={`${size} rounded-full bg-gradient-to-tr from-zinc-800 to-neutral-700 shadow-inner flex items-center justify-center ${textSize} font-bold text-white/80`}>
-          {name?.[0]}
-        </div>
-      )}
-      {online && <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#111] shadow-[0_0_10px_rgba(16,185,129,0.6)]"></div>}
-    </div>
-  );
 
   // Draft saving
   useEffect(() => {
@@ -898,15 +1035,6 @@ export default function Chat() {
       })
     : messages;
 
-  // Tick icons for status
-  const StatusTick = ({ status }) => {
-    if (status === 'sending') return <span className="text-white/20">○</span>;
-    if (status === 'sent') return <svg viewBox="0 0 16 15" width="14" height="13" className="fill-current opacity-50"><path d="M15.01 3.316l-.478-.372a.365.365 0 0 0-.51.063L8.666 9.879a.32.32 0 0 1-.484.033l-.358-.325a.319.319 0 0 0-.484.032l-.378.483a.418.418 0 0 0 .036.541l1.32 1.266c.143.14.361.125.484-.033l6.272-8.048a.366.366 0 0 0-.064-.512z"/></svg>;
-    if (status === 'delivered') return <svg viewBox="0 0 16 15" width="14" height="13" className="fill-current opacity-60"><path d="M15.01 3.316l-.478-.372a.365.365 0 0 0-.51.063L8.666 9.879a.32.32 0 0 1-.484.033L1.891 7.769a.366.366 0 0 0-.515.006l-.423.433a.364.364 0 0 0 .006.514l3.258 3.185c.143.136.361.125.484-.033l6.272-8.048a.365.365 0 0 0-.063-.51z"/></svg>;
-    if (status === 'seen') return <svg viewBox="0 0 16 15" width="14" height="13" className="fill-blue-400"><path d="M15.01 3.316l-.478-.372a.365.365 0 0 0-.51.063L8.666 9.879a.32.32 0 0 1-.484.033l-.358-.325a.319.319 0 0 0-.484.032l-.378.483a.418.418 0 0 0 .036.541l1.32 1.266c.143.14.361.125.484-.033l6.272-8.048a.366.366 0 0 0-.064-.512zm-4.1 0l-.478-.372a.365.365 0 0 0-.51.063L4.566 9.879a.32.32 0 0 1-.484.033L1.891 7.769a.366.366 0 0 0-.515.006l-.423.433a.364.364 0 0 0 .006.514l3.258 3.185c.143.136.361.125.484-.033l6.272-8.048a.365.365 0 0 0-.063-.51z"/></svg>;
-    return null;
-  };
-
   if (isHideMode) return (
     <>
       {hideModeType === 'terminal' ? <FakeTerminal /> : <ChromeDino />}
@@ -1171,218 +1299,48 @@ export default function Chat() {
               <div className="h-[1px] flex-1 bg-white/[0.03]"></div>
             </div>
 
-            {filteredMessages.map((msg, idx) => {
-              const prevMsg = filteredMessages[idx - 1];
-              const nextMsg = filteredMessages[idx + 1];
+            {(() => {
+              let lastDate = null;
+              const unreadFromPartner = filteredMessages.filter(m => m.sender_id !== user.id && (m.status === 'sent' || m.status === 'delivered'));
               
-              const isMe = msg.sender_id === user.id;
-              const isLastInGroup = nextMsg?.sender_id !== msg.sender_id;
-              const isFirstInGroup = prevMsg?.sender_id !== msg.sender_id;
+              return filteredMessages.map((msg, index) => {
+                const dateStr = format(new Date(msg.created_at), 'yyyy-MM-dd');
+                const showDateDivider = dateStr !== lastDate;
+                lastDate = dateStr;
 
-            // Date Divider Logic
-            const showDateDivider = !prevMsg || format(new Date(msg.created_at), 'yyyy-MM-dd') !== format(new Date(prevMsg.created_at), 'yyyy-MM-dd');
-            const dateStr = format(new Date(msg.created_at), 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'Today' 
-                        : format(new Date(msg.created_at), 'yyyy-MM-dd') === format(new Date(Date.now() - 86400000), 'yyyy-MM-dd') ? 'Yesterday'
-                        : format(new Date(msg.created_at), 'MMMM d, yyyy');
+                const nextMsg = filteredMessages[index + 1];
+                const isLastInGroup = !nextMsg || nextMsg.sender_id !== msg.sender_id ||
+                  Math.abs(new Date(nextMsg.created_at) - new Date(msg.created_at)) > 300000;
 
-            // Unread Logic: if this is the first unread message from partner
-            const unreadMessages = filteredMessages.filter(m => m.sender_id !== user.id && (m.status === 'sent' || m.status === 'delivered'));
-            const showUnreadMarker = unreadMessages.length > 0 && msg.id === unreadMessages[0].id;
-            
-            let messageText = '', replyText = null, replySender = null, reaction = null, isEdited = false;
+                const showUnreadMarker = unreadFromPartner.length > 0 && msg.id === unreadFromPartner[0].id;
 
-            if (msg.type === 'text') {
-              if (typeof msg.content === 'object' && msg.content !== null) {
-                messageText = msg.content.text ?? '';
-                replyText = msg.content.reply_text ?? null;
-                replySender = msg.content.reply_sender ?? null;
-                reaction = msg.content.reaction ?? null;
-                isEdited = msg.content.edited ?? false;
-              } else {
-                messageText = msg.content || '';
-              }
-            } else if (typeof msg.content === 'object' && msg.content !== null) {
-              reaction = msg.content.reaction ?? null;
-            }
-
-            // Resolve media url from possibly JSON-parsed content
-            const mediaUrl = typeof msg.content === 'string' ? msg.content
-              : (msg.content?.url || msg.content);
-
-            const isStarred = typeof msg.content === 'object' && msg.content?.is_starred;
-
-            return (
-              <React.Fragment key={msg.id}>
-                {showDateDivider && (
-                  <div className="flex justify-center my-6 relative z-10">
-                    <div className="px-4 py-1.5 bg-[#ffffff]/5 backdrop-blur-md rounded-xl text-[11px] text-white/40 font-bold uppercase tracking-widest border border-white/5">
-                      {dateStr}
-                    </div>
-                  </div>
-                )}
-
-                {showUnreadMarker && (
-                   <div className="flex justify-center my-6 relative z-10">
-                     <div className="px-5 py-2 bg-emerald-500/10 backdrop-blur-xl border border-emerald-500/20 rounded-full text-[11px] text-emerald-400 font-bold shadow-lg shadow-emerald-500/5">
-                       {unreadMessages.length} Unread Messages
-                     </div>
-                   </div>
-                )}
-
-                <div
-                  id={`msg-${msg.id}`}
-                  className={`flex items-end gap-2 max-w-[90%] sm:max-w-[75%] relative z-10 ${isMe ? 'self-end flex-row-reverse' : 'self-start'} ${
-                    isLastInGroup 
-                      ? (reaction ? 'mb-12' : 'mb-4') 
-                      : (reaction ? 'mb-9' : 'mb-1')
-                  }`}
-                >
-                <div className="hidden sm:block w-8 h-8 flex-shrink-0">
-                  {isLastInGroup && (
-                    <Avatar 
-                      src={isMe ? user.avatar_url : partnerAvatar} 
-                      name={isMe ? user.name : partnerName} 
-                      size="w-8 h-8" 
-                      textSize="text-[10px]" 
-                    />
-                  )}
-                </div>
-
-                <motion.div
-                  drag="x"
-                  dragConstraints={{ left: 0, right: 0 }}
-                  dragElastic={0.1}
-                  onDragEnd={(e, info) => { 
-                    if (info.offset.x > 50) {
-                      setReplyingTo(msg);
-                      setTimeout(() => inputRef.current?.focus(), 50);
-                    } 
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setContextMenu({ isOpen: true, position: { x: e.clientX, y: e.clientY }, msg });
-                  }}
-                  animate={{
-                    x: 0,
-                    scale: highlightedMsgId === msg.id ? 1.03 : 1,
-                    boxShadow: highlightedMsgId === msg.id 
-                      ? (isMe ? "0 0 30px rgba(255,255,255,0.3)" : "0 0 30px rgba(16,185,129,0.3)")
-                      : (isMe ? "0 10px 15px -3px rgba(255,255,255,0.05)" : "0 25px 50px -12px rgba(0,0,0,0.5)")
-                  }}
-                  transition={{ duration: 0.8, repeat: 2 }}
-                  className={`relative px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-2xl ${isMe
-                    ? 'rounded-br-[6px] bg-white text-black shadow-lg shadow-white/5'
-                    : 'rounded-bl-[6px] bg-[#1a1a1a] border border-white/[0.04] text-white/90 shadow-2xl'
-                  } text-[15px] leading-snug font-medium z-10 cursor-grab active:cursor-grabbing select-none w-fit max-w-full`}
-                >
-                  {isStarred && (
-                    <div className={`absolute -top-2 ${isMe ? 'left-2' : 'right-2'} text-yellow-400 text-xs`}>⭐</div>
-                  )}
-
-                  {replyText && (
-                    <div className={`mb-2 pl-3 py-1 pr-3 rounded-lg border-l-2 text-[13px] overflow-hidden ${
-                      isMe 
-                        ? 'bg-black/[0.04] border-black/20' 
-                        : 'bg-white/[0.04] border-emerald-500/50'
-                    }`}>
-                      <div className={`font-bold text-[10px] uppercase tracking-wide mb-0.5 ${isMe ? 'text-black/60' : 'text-emerald-400'}`}>
-                        {replySender}
-                      </div>
-                      <div className={`line-clamp-1 leading-tight ${isMe ? 'text-black/70' : 'text-white/60'}`}>
-                        {replyText}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="relative">
-                    {msg.type === 'audio' && <AudioPlayer src={typeof msg.content === 'string' ? msg.content : msg.content?.url} isMe={isMe} />}
-
-                    {msg.type === 'image' && (
-                      msg.status === 'error' ? (
-                        <div className="flex items-center gap-2 text-red-400 text-sm px-1"><span>⚠️ Upload failed</span></div>
-                      ) : (
-                        <div className={`cursor-pointer overflow-hidden rounded-xl border border-white/10 relative select-none touch-none ${msg.status === 'sending' ? 'opacity-70' : ''}`}
-                            onClick={(e) => {
-                              if (mediaUrl && !mediaUrl.startsWith('blob:') && !msg.isDragging) {
-                                setViewedPhoto(mediaUrl);
-                              }
-                            }}>
-                          <img src={mediaUrl} alt="media" className="max-w-[240px] max-h-[300px] object-cover hover:scale-105 transition-transform duration-500" />
-                          {msg.status === 'sending' && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div></div>}
-                        </div>
-                      )
-                    )}
-
-                    {msg.type === 'video' && (
-                       msg.status === 'error' ? (
-                         <div className="flex items-center gap-2 text-red-400 text-sm"><span>⚠️ Video upload failed</span></div>
-                       ) : (
-                         <div className={`overflow-hidden rounded-xl border border-white/10 bg-black/50 relative ${msg.status === 'sending' ? 'opacity-70' : ''}`}>
-                           <video src={mediaUrl} controls className="max-w-[240px] max-h-[300px] outline-none" preload="metadata" />
-                           {msg.status === 'sending' && <div className="absolute inset-0 flex items-center justify-center bg-black/60"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div></div>}
-                         </div>
-                       )
-                    )}
-
-                    {msg.type === 'file' && (
-                      <a
-                        href={mediaUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download={msg.fileName}
-                        className={`flex items-center gap-3 py-1 pr-[45px] no-underline ${isMe ? 'text-black' : 'text-white'}`}
-                      >
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isMe ? 'bg-black/10' : 'bg-white/10'}`}>
-                          <File className="w-5 h-5" />
-                        </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-sm font-semibold truncate max-w-[120px]">{msg.fileName || 'File'}</span>
-                          <span className={`text-xs opacity-50`}>
-                            {msg.fileSize ? `${(msg.fileSize / 1024).toFixed(0)} KB` : ''}
-                          </span>
-                        </div>
-                        <ArrowDownToLine className="w-4 h-4 opacity-40 flex-shrink-0" />
-                      </a>
-                    )}
-
-                    {/* Integrated Metadata Flow - No more absolute gapping */}
-                    <div className="flex flex-wrap items-end justify-end gap-x-2 gap-y-0.5 mt-0.5">
-                      {msg.type === 'text' && (
-                        <p className="flex-1 whitespace-pre-wrap break-words text-[15px] leading-relaxed min-w-0">
-                          {searchMode ? highlightMatch(messageText, searchQuery) : messageText}
-                        </p>
-                      )}
-
-                      <div className={`flex items-center gap-1.5 text-[10px] leading-none mb-[1px] ${
-                        msg.type === 'image' || msg.type === 'video' 
-                          ? 'absolute bottom-1.5 right-1.5 bg-black/40 backdrop-blur-md text-white px-1.5 py-1 rounded-lg z-20' 
-                          : isMe ? 'text-black/50 ml-auto' : 'text-white/30 ml-auto'
-                      }`}>
-                        {isEdited && <span className="italic opacity-70">edited</span>}
-                        <span>{msg.created_at ? format(new Date(msg.created_at), 'HH:mm') : ''}</span>
-                        {isMe && <StatusTick status={msg.status} />}
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setContextMenu({ isOpen: true, position: { x: e.clientX, y: e.clientY }, msg });
-                          }}
-                          className="opacity-0 group-hover/bubble:opacity-100 transition-opacity ml-0.5 hover:text-emerald-500"
-                        >
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {reaction && (
-                    <div className={`absolute -bottom-[18px] left-[-2px] bg-[#202c33] border border-white/[0.1] rounded-full px-2 py-1 text-sm shadow-2xl hover:scale-110 transition-all cursor-pointer z-[60]`}>
-                      {reaction}
-                    </div>
-                  )}
-                </motion.div>
-            </React.Fragment>
-            );
-          })}
+                return (
+                  <MessageBubble 
+                    key={msg.id}
+                    msg={msg}
+                    isMe={msg.sender_id === user.id}
+                    user={user}
+                    partnerName={partnerName}
+                    partnerAvatar={partnerAvatar}
+                    showDateDivider={showDateDivider}
+                    dateStr={format(new Date(msg.created_at), 'MMMM d, yyyy')}
+                    showUnreadMarker={showUnreadMarker}
+                    unreadCount={unreadFromPartner.length}
+                    isLastInGroup={isLastInGroup}
+                    highlightedMsgId={highlightedMsgId}
+                    searchMode={searchMode}
+                    searchQuery={searchQuery}
+                    highlightMatch={highlightMatch}
+                    setReplyingTo={setReplyingTo}
+                    setContextMenu={setContextMenu}
+                    setViewedPhoto={setViewedPhoto}
+                    inputRef={inputRef}
+                    StatusTick={StatusTick}
+                    Avatar={Avatar}
+                  />
+                );
+              });
+            })()}
           <div ref={bottomRef} className="h-4" />
         </div>
       </div>
