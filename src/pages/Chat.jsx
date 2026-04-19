@@ -62,17 +62,21 @@ const A2MessageContextMenu = ({ position, msg, isMe, isStarred, onClose, onActio
   // Horizontal Positioning
   let finalLeft = isMobile ? padding : position.x;
   if (!isMobile && isRightSide) finalLeft = position.x - menuWidth;
+  // Clamp horizontal
   finalLeft = Math.max(padding, Math.min(finalLeft, screenWidth - menuWidth - padding));
 
-  // Vertical Positioning
+  // Vertical Positioning - Strict Viewport Clamping
   let finalTop = position.y;
-  let transform = 'none';
-
+  let originY = "top";
+  
   if (shouldPivotY) {
-    finalTop = position.y - 12;
-    transform = 'translateY(-100%)';
+    // Grow upwards from cursor, but don't hit the top
+    finalTop = Math.max(padding + maxHeight, position.y) - maxHeight;
+    originY = "bottom";
   } else {
-    finalTop = position.y + 12;
+    // Grow downwards from cursor, but don't hit the bottom
+    finalTop = Math.min(screenHeight - maxHeight - padding, position.y);
+    originY = "top";
   }
 
   return (
@@ -88,9 +92,12 @@ const A2MessageContextMenu = ({ position, msg, isMe, isStarred, onClose, onActio
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95 }}
           style={{
-            top: finalTop, left: finalLeft, position: 'absolute', transform: transform,
+            top: finalTop, 
+            left: finalLeft, 
+            position: 'absolute',
             width: isMobile ? `${menuWidth}px` : 'fit-content',
-            maxHeight: `${maxHeight}px`
+            maxHeight: `${maxHeight}px`,
+            transformOrigin: `${isRightSide ? 'right' : 'left'} ${originY}`
           }}
           className={`flex flex-col gap-2 shadow-2xl ${isMobile ? 'items-center' : (isRightSide ? 'items-end' : 'items-start')} pointer-events-auto`}
         >
@@ -1224,8 +1231,8 @@ export default function Chat() {
                   id={`msg-${msg.id}`}
                   className={`flex items-end gap-2 max-w-[90%] sm:max-w-[75%] relative z-10 ${isMe ? 'self-end flex-row-reverse' : 'self-start'} ${
                     isLastInGroup 
-                      ? (reaction ? 'mb-10' : 'mb-4') 
-                      : (reaction ? 'mb-7' : 'mb-1')
+                      ? (reaction ? 'mb-12' : 'mb-4') 
+                      : (reaction ? 'mb-9' : 'mb-1')
                   }`}
                 >
                 <div className="hidden sm:block w-8 h-8 flex-shrink-0">
@@ -1610,10 +1617,10 @@ export default function Chat() {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
               onClick={e => e.stopPropagation()}
-              className="w-full max-w-[360px] bg-[#1a2126] rounded-[2.5rem] border border-white/10 shadow-2xl overflow-hidden"
+              className="w-full max-w-[360px] bg-[#1a2126] rounded-[2.5rem] border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
               {/* Header */}
-              <div className="p-6 border-b border-white/5 flex items-center justify-between">
+              <div className="p-6 border-b border-white/5 flex items-center justify-between sticky top-0 bg-[#1a2126] z-10">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 bg-emerald-500/10 rounded-2xl text-emerald-400">
                     <A2InfoIcon className="w-5 h-5" />
@@ -1626,7 +1633,7 @@ export default function Chat() {
               </div>
 
               {/* Body */}
-              <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto scrollbar-hide">
+              <div className="p-6 space-y-6 overflow-y-auto scrollbar-hide flex-1">
                 {/* Message Preview */}
                 <div className="flex flex-col items-center justify-center p-3 mb-2">
                   <div className={`relative px-4 py-3 rounded-2xl bg-emerald-950/30 border border-emerald-500/20 text-white/90 text-sm max-w-full shadow-inner`}>
