@@ -1252,7 +1252,12 @@ export default function Chat() {
                   drag="x"
                   dragConstraints={{ left: 0, right: 0 }}
                   dragElastic={{ left: 0, right: 0.15 }}
-                  onDragEnd={(e, info) => { if (info.offset.x > 60) setReplyingTo(msg); }}
+                  onDragEnd={(e, info) => { 
+                    if (info.offset.x > 60) {
+                      setReplyingTo(msg);
+                      inputRef.current?.focus();
+                    } 
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setContextMenu({ isOpen: true, position: { x: e.clientX, y: e.clientY }, msg });
