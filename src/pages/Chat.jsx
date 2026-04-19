@@ -103,6 +103,13 @@ const A2MessageContextMenu = ({ position, msg, isMe, isStarred, onClose, onActio
                     </button>
                   );
                 })}
+                <button 
+                  onClick={() => setShowFullPicker(true)}
+                  className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all group"
+                  title="More Emojis"
+                >
+                  <Plus className="w-5 h-5" />
+                </button>
               </div>
 
               <div className="bg-[#202c33] border border-white/[0.08] rounded-[1.8rem] w-[230px] py-2.5 shadow-[0_16px_60px_rgba(0,0,0,0.8)] flex flex-col backdrop-blur-3xl overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
@@ -235,34 +242,17 @@ const decryptMsg = (msg) => {
 export default function Chat() {
   const { user, logout, refreshUser } = useAuth();
   
-  // Reusable Avatar Component for consistency
-  const Avatar = ({ src, name, size = "w-12 h-12", textSize = "text-lg", online = false }) => (
-    <div className="relative flex-shrink-0">
-      {src ? (
-        <img src={src} alt={name} className={`${size} rounded-full object-cover shadow-lg border border-white/10`} />
-      ) : (
-        <div className={`${size} rounded-full bg-gradient-to-tr from-zinc-800 to-neutral-700 shadow-inner flex items-center justify-center ${textSize} font-bold text-white/80`}>
-          {name?.[0]}
-        </div>
-      )}
-      {online && <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#111] shadow-[0_0_10px_rgba(16,185,129,0.6)]"></div>}
-    </div>
-  );
-
-  // Guard for null user during loading
-  if (!user) return <div className="h-screen bg-black" />;
-
-  const partnerId = user.id === 'user_abhi' ? 'user_arya' : 'user_abhi';
+  // State Definitions - Moved to Top
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [replyingTo, setReplyingTo] = useState(null);
   const [editingMsg, setEditingMsg] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [pNickname, setPNickname] = useState(() => localStorage.getItem(`nickname_${user?.id}_${partnerId}`) || '');
-  const partnerName = pNickname || (user.id === 'user_abhi' ? 'Arya' : 'Abhi');
-
-
-
+  const [pNickname, setPNickname] = useState(() => {
+    if (!user) return '';
+    const partnerId = user.id === 'user_abhi' ? 'user_arya' : 'user_abhi';
+    return localStorage.getItem(`nickname_${user.id}_${partnerId}`) || '';
+  });
   const [contextMenu, setContextMenu] = useState({ isOpen: false, position: null, msg: null });
   const [showInputEmoji, setShowInputEmoji] = useState(false);
   const [showStarredVault, setShowStarredVault] = useState(false);
@@ -270,6 +260,27 @@ export default function Chat() {
   const [searchMode, setSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [msgInfoData, setMsgInfoData] = useState(null);
+  const [highlightedMsgId, setHighlightedMsgId] = useState(null);
+
+  // Helper to Highlight Search Matches
+  const highlightMatch = (text, query) => {
+    if (!query || !query.trim()) return text;
+    const parts = text.split(new RegExp(`(${query})`, 'gi'));
+    return parts.map((part, i) => 
+      part.toLowerCase() === query.toLowerCase() 
+        ? <span key={i} className="bg-emerald-500/30 text-emerald-200 px-0.5 rounded shadow-[0_0_10px_rgba(16,185,129,0.3)]">{part}</span> 
+        : part
+    );
+  };
+
+  const handleJumpToMessage = (id) => {
+    const el = document.getElementById(`msg-${id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedMsgId(id);
+      setTimeout(() => setHighlightedMsgId(null), 2500);
+    }
+  };
 
   // Handle mobile back button to close modals/drawers
   useEffect(() => {
@@ -290,10 +301,6 @@ export default function Chat() {
 
     return () => {
       window.removeEventListener('popstate', handlePopState);
-      // Clean up history state if modal is closed manually
-      if (!msgInfoData && !showSettings && !showStarredVault && window.history.state?.modalOpen) {
-        // We can't easily go forward, but this is fine for SPA
-      }
     };
   }, [msgInfoData, showSettings, showStarredVault]);
 
@@ -303,7 +310,6 @@ export default function Chat() {
   const [partnerLastSeen, setPartnerLastSeen] = useState(null);
   const [partnerAvatar, setPartnerAvatar] = useState(null);
   const [hideModeType, setHideModeType] = useState('dino');
-
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -316,10 +322,29 @@ export default function Chat() {
   const [viewedPhoto, setViewedPhoto] = useState(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
-
   const bottomRef = useRef(null);
   const roomChannelRef = useRef(null);
   const inputRef = useRef(null);
+
+  // Guard for null user - MOVED AFTER HOOKS
+  if (!user) return <div className="h-screen bg-black" />;
+
+  const partnerId = user.id === 'user_abhi' ? 'user_arya' : 'user_abhi';
+  const partnerName = pNickname || (user.id === 'user_abhi' ? 'Arya' : 'Abhi');
+
+  // Reusable Avatar Component
+  const Avatar = ({ src, name, size = "w-12 h-12", textSize = "text-lg", online = false }) => (
+    <div className="relative flex-shrink-0">
+      {src ? (
+        <img src={src} alt={name} className={`${size} rounded-full object-cover shadow-lg border border-white/10`} />
+      ) : (
+        <div className={`${size} rounded-full bg-gradient-to-tr from-zinc-800 to-neutral-700 shadow-inner flex items-center justify-center ${textSize} font-bold text-white/80`}>
+          {name?.[0]}
+        </div>
+      )}
+      {online && <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#111] shadow-[0_0_10px_rgba(16,185,129,0.6)]"></div>}
+    </div>
+  );
 
   // Draft saving
   useEffect(() => {
@@ -1094,9 +1119,7 @@ export default function Chat() {
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 className="absolute top-0 left-0 right-0 z-[100] bg-black/95 backdrop-blur-2xl border-b border-white/[0.05] shadow-2xl flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-white/[0.02] transition-colors"
-                onClick={() => {
-                   document.getElementById(`msg-${pinnedMsg.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }}
+                onClick={() => handleJumpToMessage(pinnedMsg.id)}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-1 h-8 bg-emerald-500 rounded-full" />
@@ -1211,6 +1234,15 @@ export default function Chat() {
                     e.preventDefault();
                     setContextMenu({ isOpen: true, position: { x: e.clientX, y: e.clientY }, msg });
                   }}
+                  animate={highlightedMsgId === msg.id ? { 
+                    scale: [1, 1.03, 1],
+                    boxShadow: [
+                      isMe ? "0 10px 15px -3px rgba(255,255,255,0.05)" : "0 25px 50px -12px rgba(0,0,0,0.5)",
+                      isMe ? "0 0 30px rgba(255,255,255,0.3)" : "0 0 30px rgba(16,185,129,0.3)",
+                      isMe ? "0 10px 15px -3px rgba(255,255,255,0.05)" : "0 25px 50px -12px rgba(0,0,0,0.5)"
+                    ]
+                  } : {}}
+                  transition={{ duration: 0.8, repeat: 2 }}
                   className={`relative px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-2xl ${isMe
                     ? 'rounded-br-[6px] bg-white text-black shadow-lg shadow-white/5'
                     : 'rounded-bl-[6px] bg-[#1a1a1a] border border-white/[0.04] text-white/90 shadow-2xl'
@@ -1286,7 +1318,7 @@ export default function Chat() {
                     <div className="flex flex-wrap items-end justify-end gap-x-2 gap-y-0.5 mt-0.5">
                       {msg.type === 'text' && (
                         <p className="flex-1 whitespace-pre-wrap break-words text-[15px] leading-relaxed min-w-0">
-                          {messageText}
+                          {searchMode ? highlightMatch(messageText, searchQuery) : messageText}
                         </p>
                       )}
 
@@ -1342,14 +1374,42 @@ export default function Chat() {
                 <div className="p-6 border-b border-white/5 bg-[#1a1c1e] flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                      <StarIcon className="w-5 h-5 text-emerald-500" filled />
+                      <Star className="w-5 h-5 text-emerald-500 fill-emerald-500/20" />
                       Starred Messages
                     </h3>
                     <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold mt-1">Your Personal Vault</p>
                   </div>
-                  <button onClick={() => setShowStarredVault(false)} className="p-2 hover:bg-white/10 rounded-full transition-all text-white/40 hover:text-white">
-                    <X className="w-6 h-6" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {messages.some(m => typeof m.content === 'object' && m.content?.is_starred) && (
+                      <button 
+                        onClick={async () => {
+                          if (confirm("Unstar all messages in this vault?")) {
+                            const starred = messages.filter(m => typeof m.content === 'object' && m.content?.is_starred);
+                            for (const m of starred) {
+                              let sPayload = { ...m.content };
+                              delete sPayload.is_starred;
+                              const enc = encryptMessage(JSON.stringify(sPayload));
+                              await supabase.from('messages').update({ content: enc }).eq('id', m.id);
+                            }
+                            setMessages(prev => prev.map(x => {
+                              if (typeof x.content === 'object' && x.content?.is_starred) {
+                                let p = { ...x.content };
+                                delete p.is_starred;
+                                return { ...x, content: p };
+                              }
+                              return x;
+                            }));
+                          }
+                        }}
+                        className="text-[10px] text-red-500/60 hover:text-red-500 font-bold uppercase tracking-tighter mr-2 transition-colors"
+                      >
+                        Unstar All
+                      </button>
+                    )}
+                    <button onClick={() => setShowStarredVault(false)} className="p-2 hover:bg-white/10 rounded-full transition-all text-white/40 hover:text-white">
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
@@ -1369,7 +1429,7 @@ export default function Chat() {
                         <div 
                           key={m.id}
                           onClick={() => {
-                            document.getElementById(`msg-${m.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            handleJumpToMessage(m.id);
                             setShowStarredVault(false);
                           }}
                           className="group p-4 bg-white/[0.03] border border-white/[0.05] rounded-2xl cursor-pointer hover:bg-white/[0.06] hover:border-emerald-500/30 transition-all"
@@ -1512,7 +1572,7 @@ export default function Chat() {
                     onClick={handleSendMessage}
                     className={`w-10 h-10 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg ${editingMsg ? 'bg-blue-500 text-white shadow-blue-500/20' : 'bg-white text-black shadow-white/10'}`}
                   >
-                    {editingMsg ? <PenIcon className="w-5 h-5" /> : <Send className="w-5 h-5 ml-0.5" />}
+                    {editingMsg ? <A2PenIcon className="w-5 h-5" /> : <Send className="w-5 h-5 ml-0.5" />}
                   </button>
                 ) : (
                   <button
@@ -1763,12 +1823,12 @@ function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate, onClea
                   </div>
 
                   <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05] flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${msgInfoData.status === 'read' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/5 text-white/40'}`}>
-                      {msgInfoData.status === 'read' ? <A2CheckCheckIcon className="w-5 h-5" /> : <div className="text-sm font-bold">✓</div>}
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${msgInfoData.status === 'seen' ? 'bg-blue-500/10 text-blue-400' : 'bg-white/5 text-white/40'}`}>
+                      {msgInfoData.status === 'seen' ? <A2CheckCheckIcon className="w-5 h-5" /> : <div className="text-sm font-bold">✓</div>}
                     </div>
                     <div>
                       <p className="text-white/40 text-xs font-medium uppercase tracking-wider mb-0.5">Status</p>
-                      <p className={`text-white font-medium capitalize ${msgInfoData.status === 'read' ? 'text-emerald-400' : ''}`}>{msgInfoData.status || 'Sent'}</p>
+                      <p className={`text-white font-medium capitalize ${msgInfoData.status === 'seen' ? 'text-blue-400' : ''}`}>{msgInfoData.status || 'Sent'}</p>
                     </div>
                   </div>
 
