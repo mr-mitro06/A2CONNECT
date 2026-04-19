@@ -41,17 +41,30 @@ const A2MessageContextMenu = ({ position, msg, isMe, isStarred, onClose, onActio
   const screenHeight = window.innerHeight;
   const isMobile = screenWidth < 480;
   const padding = isMobile ? 8 : 16;
-  const estimatedMenuHeight = 480; 
-  const effectiveMenuWidth = isMobile ? (screenWidth - padding * 2) : 230;
-
-  const spaceBelow = screenHeight - position.y - padding;
-  const shouldPivotY = spaceBelow < estimatedMenuHeight && position.y > estimatedMenuHeight;
   const isRightSide = position.x > screenWidth / 2;
+  
+  // Dynamic Height Strategy
+  const availableBelow = screenHeight - position.y - padding - 20;
+  const availableAbove = position.y - padding - 20;
+  const menuWidth = isMobile ? (screenWidth - padding * 2) : 230;
+  const idealHeight = isMe ? 480 : 420; // Rough estimate including reaction bar
 
+  let shouldPivotY = false;
+  let maxHeight = idealHeight;
+
+  if (availableBelow < idealHeight && availableAbove > availableBelow) {
+    shouldPivotY = true;
+    maxHeight = Math.min(idealHeight, availableAbove);
+  } else {
+    maxHeight = Math.min(idealHeight, availableBelow);
+  }
+
+  // Horizontal Positioning
   let finalLeft = isMobile ? padding : position.x;
-  if (!isMobile && isRightSide) finalLeft = position.x - effectiveMenuWidth;
-  finalLeft = Math.max(padding, Math.min(finalLeft, screenWidth - effectiveMenuWidth - padding));
+  if (!isMobile && isRightSide) finalLeft = position.x - menuWidth;
+  finalLeft = Math.max(padding, Math.min(finalLeft, screenWidth - menuWidth - padding));
 
+  // Vertical Positioning
   let finalTop = position.y;
   let transform = 'none';
 
@@ -60,9 +73,6 @@ const A2MessageContextMenu = ({ position, msg, isMe, isStarred, onClose, onActio
     transform = 'translateY(-100%)';
   } else {
     finalTop = position.y + 12;
-    if (finalTop + estimatedMenuHeight > screenHeight - padding) {
-      finalTop = Math.max(padding, screenHeight - estimatedMenuHeight - padding);
-    }
   }
 
   return (
@@ -79,7 +89,8 @@ const A2MessageContextMenu = ({ position, msg, isMe, isStarred, onClose, onActio
           exit={{ opacity: 0, scale: 0.95 }}
           style={{
             top: finalTop, left: finalLeft, position: 'absolute', transform: transform,
-            maxWidth: `${effectiveMenuWidth}px`, width: isMobile ? `${effectiveMenuWidth}px` : 'fit-content'
+            width: isMobile ? `${menuWidth}px` : 'fit-content',
+            maxHeight: `${maxHeight}px`
           }}
           className={`flex flex-col gap-2 shadow-2xl ${isMobile ? 'items-center' : (isRightSide ? 'items-end' : 'items-start')} pointer-events-auto`}
         >
@@ -112,7 +123,10 @@ const A2MessageContextMenu = ({ position, msg, isMe, isStarred, onClose, onActio
                 </button>
               </div>
 
-              <div className="bg-[#202c33] border border-white/[0.08] rounded-[1.8rem] w-[230px] py-2.5 shadow-[0_16px_60px_rgba(0,0,0,0.8)] flex flex-col backdrop-blur-3xl overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
+              <div 
+                style={{ maxHeight: `${maxHeight - 60}px` }}
+                className="bg-[#202c33] border border-white/[0.08] rounded-[1.8rem] w-[230px] py-2.5 shadow-[0_16px_60px_rgba(0,0,0,0.8)] flex flex-col backdrop-blur-3xl overflow-y-auto scrollbar-thin scrollbar-thumb-white/10"
+              >
                 {isMe && msg.type === 'text' && (
                   <button onClick={() => onAction('edit')} className="flex items-center gap-4 px-5 py-3 text-white text-[15px] hover:bg-white/5 transition-colors group">
                     <A2PenIcon className="w-5 h-5 opacity-50 group-hover:opacity-100" />
@@ -1612,7 +1626,7 @@ export default function Chat() {
               </div>
 
               {/* Body */}
-              <div className="p-6 space-y-6">
+              <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto scrollbar-hide">
                 {/* Message Preview */}
                 <div className="flex flex-col items-center justify-center p-3 mb-2">
                   <div className={`relative px-4 py-3 rounded-2xl bg-emerald-950/30 border border-emerald-500/20 text-white/90 text-sm max-w-full shadow-inner`}>
