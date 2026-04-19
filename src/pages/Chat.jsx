@@ -1587,6 +1587,120 @@ export default function Chat() {
           )}
         </div>
       </div>
+      {/* --- Message Info Modal --- */}
+      <AnimatePresence>
+        {msgInfoData && (
+          <div className="fixed inset-0 z-[1000000] flex items-center justify-center bg-black/70 backdrop-blur-md p-4" onClick={() => setMsgInfoData(null)}>
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-[360px] bg-[#1a2126] rounded-[2.5rem] border border-white/10 shadow-2xl overflow-hidden"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-emerald-500/10 rounded-2xl text-emerald-400">
+                    <A2InfoIcon className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-white font-semibold text-lg">Message Info</h3>
+                </div>
+                <button onClick={() => setMsgInfoData(null)} className="p-2 hover:bg-white/5 rounded-full text-white/40 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-6">
+                {/* Message Preview */}
+                <div className="flex flex-col items-center justify-center p-3 mb-2">
+                  <div className={`relative px-4 py-3 rounded-2xl bg-emerald-950/30 border border-emerald-500/20 text-white/90 text-sm max-w-full shadow-inner`}>
+                    {msgInfoData.type === 'image' && (
+                      <div className="mb-2 rounded-lg overflow-hidden border border-white/10">
+                         <img src={typeof msgInfoData.content === 'string' ? msgInfoData.content : msgInfoData.content?.url} className="max-w-full max-h-[150px] object-cover" alt="Preview" />
+                      </div>
+                    )}
+                    {msgInfoData.type === 'video' && (
+                      <div className="mb-2 rounded-lg overflow-hidden border border-white/10 bg-black/40 px-3 py-4 flex items-center justify-center">
+                         <File className="w-8 h-8 text-white/40" />
+                      </div>
+                    )}
+                    {msgInfoData.type === 'audio' && (
+                      <div className="mb-2 flex items-center gap-3 text-emerald-400">
+                         <Mic className="w-5 h-5" />
+                         <span>Voice Message</span>
+                      </div>
+                    )}
+                    <p className="whitespace-pre-wrap break-words leading-relaxed select-none">
+                      {msgInfoData.type === 'text' 
+                        ? (typeof msgInfoData.content === 'object' ? msgInfoData.content.text : msgInfoData.content) 
+                        : (msgInfoData.fileName || 'Resource')}
+                    </p>
+                    <div className="mt-1 flex justify-end">
+                       <span className="text-[10px] text-white/30">{format(new Date(msgInfoData.created_at), 'HH:mm')}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Details Grid */}
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05] flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
+                      {msgInfoData.type === 'image' ? <Upload className="w-5 h-5" /> : 
+                       msgInfoData.type === 'video' ? <File className="w-5 h-5" /> :
+                       msgInfoData.type === 'audio' ? <Mic className="w-5 h-5" /> :
+                       <File className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <p className="text-white/40 text-xs font-medium uppercase tracking-wider mb-0.5">Type</p>
+                      <p className="text-white font-medium capitalize">{msgInfoData.type || 'text'}</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05] flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${msgInfoData.status === 'seen' ? 'bg-blue-500/10 text-blue-400' : 'bg-white/5 text-white/40'}`}>
+                      {msgInfoData.status === 'seen' ? <A2CheckCheckIcon className="w-5 h-5" /> : <div className="text-sm font-bold">✓</div>}
+                    </div>
+                    <div>
+                      <p className="text-white/40 text-xs font-medium uppercase tracking-wider mb-0.5">Status</p>
+                      <p className={`text-white font-medium capitalize ${msgInfoData.status === 'seen' ? 'text-blue-400' : ''}`}>{msgInfoData.status || 'Sent'}</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05] flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400">
+                      <A2ClockIcon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-white/40 text-xs font-medium uppercase tracking-wider mb-0.5">Sent At</p>
+                      <p className="text-white font-medium">
+                        {(() => {
+                          try {
+                            return format(new Date(msgInfoData.created_at), 'PPP p');
+                          } catch (e) {
+                            return 'Unknown Date';
+                          }
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-6 bg-white/[0.02] border-t border-white/5 flex justify-center">
+                <button 
+                  onClick={() => setMsgInfoData(null)}
+                  className="w-full py-3.5 bg-white/[0.05] hover:bg-white/[0.08] text-white font-medium rounded-2xl transition-all border border-white/5"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1748,123 +1862,6 @@ function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate, onClea
       </AnimatePresence>
 
       {/* --- Message Info Modal --- */}
-      <AnimatePresence>
-        {msgInfoData && (
-          <div className="fixed inset-0 z-[1000000] flex items-center justify-center bg-black/70 backdrop-blur-md p-4" onClick={() => {
-            console.log("Closing Message Info Modal");
-            setMsgInfoData(null);
-          }}>
-            <motion.div 
-              onViewportEnter={() => console.log("Message Info Modal Mounted")}
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              onClick={e => e.stopPropagation()}
-              className="w-full max-w-[360px] bg-[#1a2126] rounded-[2.5rem] border border-white/10 shadow-2xl overflow-hidden"
-            >
-              {/* Header */}
-              <div className="p-6 border-b border-white/5 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-emerald-500/10 rounded-2xl text-emerald-400">
-                    <A2InfoIcon className="w-5 h-5" />
-                  </div>
-                  <h3 className="text-white font-semibold text-lg">Message Info</h3>
-                </div>
-                <button onClick={() => setMsgInfoData(null)} className="p-2 hover:bg-white/5 rounded-full text-white/40 transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Body */}
-              <div className="p-6 space-y-6">
-                {/* Message Preview */}
-                <div className="flex flex-col items-center justify-center p-3 mb-2">
-                  <div className={`relative px-4 py-3 rounded-2xl bg-emerald-950/30 border border-emerald-500/20 text-white/90 text-sm max-w-full shadow-inner`}>
-                    {msgInfoData.type === 'image' && (
-                      <div className="mb-2 rounded-lg overflow-hidden border border-white/10">
-                         <img src={typeof msgInfoData.content === 'string' ? msgInfoData.content : msgInfoData.content?.url} className="max-w-full max-h-[150px] object-cover" alt="Preview" />
-                      </div>
-                    )}
-                    {msgInfoData.type === 'video' && (
-                      <div className="mb-2 rounded-lg overflow-hidden border border-white/10 bg-black/40 px-3 py-4 flex items-center justify-center">
-                         <File className="w-8 h-8 text-white/40" />
-                      </div>
-                    )}
-                    {msgInfoData.type === 'audio' && (
-                      <div className="mb-2 flex items-center gap-3 text-emerald-400">
-                         <Mic className="w-5 h-5" />
-                         <span>Voice Message</span>
-                      </div>
-                    )}
-                    <p className="whitespace-pre-wrap break-words leading-relaxed select-none">
-                      {msgInfoData.type === 'text' 
-                        ? (typeof msgInfoData.content === 'object' ? msgInfoData.content.text : msgInfoData.content) 
-                        : (msgInfoData.fileName || 'Resource')}
-                    </p>
-                    <div className="mt-1 flex justify-end">
-                       <span className="text-[10px] text-white/30">{format(new Date(msgInfoData.created_at), 'HH:mm')}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Details Grid */}
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05] flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
-                      {msgInfoData.type === 'image' ? <Upload className="w-5 h-5" /> : 
-                       msgInfoData.type === 'video' ? <File className="w-5 h-5" /> :
-                       msgInfoData.type === 'audio' ? <Mic className="w-5 h-5" /> :
-                       <File className="w-5 h-5" />}
-                    </div>
-                    <div>
-                      <p className="text-white/40 text-xs font-medium uppercase tracking-wider mb-0.5">Type</p>
-                      <p className="text-white font-medium capitalize">{msgInfoData.type || 'text'}</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05] flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${msgInfoData.status === 'seen' ? 'bg-blue-500/10 text-blue-400' : 'bg-white/5 text-white/40'}`}>
-                      {msgInfoData.status === 'seen' ? <A2CheckCheckIcon className="w-5 h-5" /> : <div className="text-sm font-bold">✓</div>}
-                    </div>
-                    <div>
-                      <p className="text-white/40 text-xs font-medium uppercase tracking-wider mb-0.5">Status</p>
-                      <p className={`text-white font-medium capitalize ${msgInfoData.status === 'seen' ? 'text-blue-400' : ''}`}>{msgInfoData.status || 'Sent'}</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05] flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400">
-                      <A2ClockIcon className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-white/40 text-xs font-medium uppercase tracking-wider mb-0.5">Sent At</p>
-                      <p className="text-white font-medium">
-                        {(() => {
-                          try {
-                            return format(new Date(msgInfoData.created_at), 'PPP p');
-                          } catch (e) {
-                            return 'Unknown Date';
-                          }
-                        })()}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="p-6 bg-white/[0.02] border-t border-white/5 flex justify-center">
-                <button 
-                  onClick={() => setMsgInfoData(null)}
-                  className="w-full py-3.5 bg-white/[0.05] hover:bg-white/[0.08] text-white font-medium rounded-2xl transition-all border border-white/5"
-                >
-                  Close
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </>
   );
 }
