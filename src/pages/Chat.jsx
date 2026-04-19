@@ -1026,27 +1026,18 @@ export default function Chat() {
                 </div>
               </div>
               <div className="flex items-center gap-0.5 sm:gap-2">
-                {/* Search - Always available */}
-                <button onClick={() => setSearchMode(true)} className="icon-btn text-white/40 hover:text-white"><Search className="w-5 h-5" /></button>
-                
-                {/* Starred Vault - Always available */}
-                <button 
-                  onClick={() => setShowStarredVault(true)}
-                  className="p-2.5 hover:bg-white/5 rounded-full text-white/40 hover:text-emerald-500 transition-all"
-                >
-                  <A2StarIcon className="w-5 h-5" />
-                </button>
-
-                {/* Desktop/Tablet Only Icons */}
-                <div className="hidden md:flex items-center gap-2">
+                {/* Actions - Desktop/Tablet Only */}
+                <div className="hidden md:flex items-center gap-1 sm:gap-2">
+                  <button onClick={() => setSearchMode(true)} className="icon-btn text-white/40 hover:text-white"><Search className="w-5 h-5" /></button>
+                  <button 
+                    onClick={() => setShowStarredVault(true)}
+                    className="p-2.5 hover:bg-white/5 rounded-full text-white/40 hover:text-emerald-500 transition-all"
+                  >
+                    <A2StarIcon className="w-5 h-5" />
+                  </button>
                   <button className="icon-btn text-white/40 hover:text-white"><Phone className="w-5 h-5" /></button>
                 </div>
 
-                {/* Settings & Logout - Specific for Mobile (since sidebar is hidden) */}
-                <div className="flex md:hidden items-center gap-0.5">
-                  <button onClick={() => setShowSettings(true)} className="icon-btn text-white/40 hover:text-white"><Settings className="w-5 h-5" /></button>
-                  <button onClick={logout} className="icon-btn text-red-500/60 hover:text-red-500"><A2LogOutIcon className="w-5 h-5" /></button>
-                </div>
 
                 {/* Mobile 3-dot Menu */}
                 <div className="sm:hidden flex items-center gap-1">
