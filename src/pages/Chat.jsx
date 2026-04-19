@@ -611,15 +611,21 @@ export default function Chat() {
       })
       .subscribe();
 
-    // 3. Partner Status Listener
+    // 3. Partner Status Listener (Last Seen & Avatar Sync)
     const userChannel = supabase
       .channel(`partner-status-${user.id}-${Date.now()}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${partnerId}` }, (payload) => {
-        setPartnerOnline(payload.new.online_status);
+        // Only update online status from DB if we don't have active presence data
+        // Presence is more reliable for "Online", DB is for "Last Seen"
+        const isPresent = roomChannelRef.current?.presenceState()?.[partnerId];
+        if (!isPresent) {
+          setPartnerOnline(payload.new.online_status);
+        }
         setPartnerLastSeen(payload.new.online_status ? null : payload.new.last_seen);
         setPartnerAvatar(payload.new.avatar_url);
       })
       .subscribe();
+
       
     // Fallback: Recover missed messages every 10s
     const fallbackInterval = setInterval(syncMessages, 10000);
@@ -630,23 +636,46 @@ export default function Chat() {
     roomChannelRef.current = supabase.channel(`presence:${roomName}`, {
       config: { presence: { key: user.id } },
     });
-    roomChannelRef.current
+     roomChannelRef.current
       .on('presence', { event: 'sync' }, () => {
         const state = roomChannelRef.current.presenceState();
         const partnerPresence = state[partnerId];
+        const isOnline = !!partnerPresence;
+        
+        setPartnerOnline(isOnline);
         setPartnerTyping(!!(partnerPresence && partnerPresence[0]?.isTyping));
+        
+        // If they are offline, ensure we have the latest last_seen from DB
+        if (!isOnline) {
+          supabase.from('users').select('last_seen').eq('id', partnerId).single()
+            .then(({ data }) => {
+              if (data) setPartnerLastSeen(data.last_seen);
+            });
+        }
       })
+
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           await roomChannelRef.current.track({ isTyping: false });
         }
       });
 
+    // Extra Reliability: Update offline status on window close
+    const handleUnloadStatus = () => {
+      supabase.from('users').update({ 
+        online_status: false, 
+        last_seen: new Date().toISOString() 
+      }).eq('id', user.id);
+    };
+    window.addEventListener('beforeunload', handleUnloadStatus);
+
     // Cleanup
     return () => {
       window.removeEventListener('focus', syncMessages);
       document.removeEventListener('visibilitychange', syncMessages);
+      window.removeEventListener('beforeunload', handleUnloadStatus);
       clearInterval(fallbackInterval);
+      
       // Synchronously remove channels to prevent StrictMode clashes
       supabase.removeChannel(dbChannel);
       supabase.removeChannel(userChannel);
@@ -654,11 +683,9 @@ export default function Chat() {
       if (roomChannelRef.current) supabase.removeChannel(roomChannelRef.current);
 
       // Asynchronously update offline status
-      supabase.from('users').update({ 
-        online_status: false, 
-        last_seen: new Date().toISOString() 
-      }).eq('id', user.id);
+      handleUnloadStatus();
     };
+
   }, [user.id, partnerId, scrollToBottom]);
 
   // Mark seen when messages rendered - Optimistic Update
