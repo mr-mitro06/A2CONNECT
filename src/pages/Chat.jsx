@@ -1251,9 +1251,9 @@ export default function Chat() {
                 <motion.div
                   drag="x"
                   dragConstraints={{ left: 0, right: 0 }}
-                  dragElastic={{ left: 0, right: 0.5 }}
+                  dragElastic={0.1}
                   onDragEnd={(e, info) => { 
-                    if (info.offset.x > 70) {
+                    if (info.offset.x > 50) {
                       setReplyingTo(msg);
                       setTimeout(() => inputRef.current?.focus(), 50);
                     } 
@@ -1262,14 +1262,13 @@ export default function Chat() {
                     e.preventDefault();
                     setContextMenu({ isOpen: true, position: { x: e.clientX, y: e.clientY }, msg });
                   }}
-                  animate={highlightedMsgId === msg.id ? { 
-                    scale: [1, 1.03, 1],
-                    boxShadow: [
-                      isMe ? "0 10px 15px -3px rgba(255,255,255,0.05)" : "0 25px 50px -12px rgba(0,0,0,0.5)",
-                      isMe ? "0 0 30px rgba(255,255,255,0.3)" : "0 0 30px rgba(16,185,129,0.3)",
-                      isMe ? "0 10px 15px -3px rgba(255,255,255,0.05)" : "0 25px 50px -12px rgba(0,0,0,0.5)"
-                    ]
-                  } : {}}
+                  animate={{
+                    x: 0,
+                    scale: highlightedMsgId === msg.id ? 1.03 : 1,
+                    boxShadow: highlightedMsgId === msg.id 
+                      ? (isMe ? "0 0 30px rgba(255,255,255,0.3)" : "0 0 30px rgba(16,185,129,0.3)")
+                      : (isMe ? "0 10px 15px -3px rgba(255,255,255,0.05)" : "0 25px 50px -12px rgba(0,0,0,0.5)")
+                  }}
                   transition={{ duration: 0.8, repeat: 2 }}
                   className={`relative px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-2xl ${isMe
                     ? 'rounded-br-[6px] bg-white text-black shadow-lg shadow-white/5'
