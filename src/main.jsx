@@ -1,3 +1,4 @@
+// A2Connect v1.0.1 - Final Recovery Flush
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';

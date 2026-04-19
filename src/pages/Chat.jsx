@@ -6,24 +6,187 @@ import PrivacyEye from '../components/PrivacyEye';
 import FakeTerminal from '../components/FakeTerminal';
 import PhotoViewer from '../components/PhotoViewer';
 import AudioPlayer from '../components/AudioPlayer';
-import MessageContextMenu from '../components/MessageContextMenu';
 import EmojiPicker from 'emoji-picker-react';
 import ChromeDino from '../components/ChromeDino';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, formatDistanceToNow } from 'date-fns';
+
+// --- Integrated A2MessageContextMenu untuk Stabilitas Maksimum ---
+const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
+const A2MessageContextMenu = ({ position, msg, isMe, isStarred, onClose, onAction }) => {
+  const menuRef = useRef(null);
+  const [showFullPicker, setShowFullPicker] = useState(false);
+  const currentReaction = (typeof msg.content === 'object' && msg.content !== null) ? msg.content.reaction : null;
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target) && !e.target.closest('.EmojiPickerReact')) {
+        onClose();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      document.body.style.overflow = '';
+    };
+  }, [onClose]);
+
+  if (!position || !msg) return null;
+
+  const screenWidth = window.innerWidth;
+  const screenHeight = window.innerHeight;
+  const isMobile = screenWidth < 480;
+  const padding = isMobile ? 8 : 16;
+  const estimatedMenuHeight = 480; 
+  const effectiveMenuWidth = isMobile ? (screenWidth - padding * 2) : 230;
+
+  const spaceBelow = screenHeight - position.y - padding;
+  const shouldPivotY = spaceBelow < estimatedMenuHeight && position.y > estimatedMenuHeight;
+  const isRightSide = position.x > screenWidth / 2;
+
+  let finalLeft = isMobile ? padding : position.x;
+  if (!isMobile && isRightSide) finalLeft = position.x - effectiveMenuWidth;
+  finalLeft = Math.max(padding, Math.min(finalLeft, screenWidth - effectiveMenuWidth - padding));
+
+  let finalTop = position.y;
+  let transform = 'none';
+
+  if (shouldPivotY) {
+    finalTop = position.y - 12;
+    transform = 'translateY(-100%)';
+  } else {
+    finalTop = position.y + 12;
+    if (finalTop + estimatedMenuHeight > screenHeight - padding) {
+      finalTop = Math.max(padding, screenHeight - estimatedMenuHeight - padding);
+    }
+  }
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[999999] bg-black/70 backdrop-blur-[4px]"
+        onContextMenu={(e) => { e.preventDefault(); onClose(); }}
+      >
+        <motion.div
+          ref={menuRef}
+          initial={{ opacity: 0, scale: 0.95, y: shouldPivotY ? 20 : -20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          style={{
+            top: finalTop, left: finalLeft, position: 'absolute', transform: transform,
+            maxWidth: `${effectiveMenuWidth}px`, width: isMobile ? `${effectiveMenuWidth}px` : 'fit-content'
+          }}
+          className={`flex flex-col gap-2 shadow-2xl ${isMobile ? 'items-center' : (isRightSide ? 'items-end' : 'items-start')} pointer-events-auto`}
+        >
+          {showFullPicker ? (
+            <div className="bg-[#1c2226] p-2 rounded-[2.5rem] border border-white/10 shadow-2xl overflow-hidden">
+              <EmojiPicker
+                theme="dark" previewConfig={{ showPreview: false }} skinTonesDisabled height={350} width={280}
+                onEmojiClick={(e) => { onAction('react', e.emoji); setShowFullPicker(false); }}
+              />
+            </div>
+          ) : (
+            <>
+              <div className="bg-[#202c33] border border-white/[0.12] rounded-[2rem] px-3 py-2 sm:px-4 flex items-center justify-center flex-wrap gap-2 sm:gap-3 shadow-[0_12px_48px_rgba(0,0,0,0.7)] backdrop-blur-3xl w-full">
+                {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => {
+                  const isActive = currentReaction === emoji;
+                  return (
+                    <button key={emoji} onClick={() => onAction('react', isActive ? null : emoji)}
+                      className={`text-[18px] sm:text-[24px] hover:scale-125 transition-all w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full group ${isActive ? 'bg-white/10 ring-2 ring-white/20' : 'hover:bg-white/5 opacity-90'}`}
+                    >
+                      <span>{emoji}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="bg-[#202c33] border border-white/[0.08] rounded-[1.8rem] w-[230px] py-2.5 shadow-[0_16px_60px_rgba(0,0,0,0.8)] flex flex-col backdrop-blur-3xl overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
+                {isMe && msg.type === 'text' && (
+                  <button onClick={() => onAction('edit')} className="flex items-center gap-4 px-5 py-3 text-white text-[15px] hover:bg-white/5 transition-colors group">
+                    <A2PenIcon className="w-5 h-5 opacity-50 group-hover:opacity-100" />
+                    <span>Edit message</span>
+                  </button>
+                )}
+                <button onClick={() => onAction('star')} className="flex items-center gap-4 px-5 py-3 text-white text-[15px] hover:bg-white/5 group">
+                  <Star className={`w-5 h-5 ${isStarred ? 'text-yellow-400 fill-current' : 'opacity-50'}`} />
+                  <span>Star</span>
+                </button>
+                <button onClick={() => onAction('info')} className="flex items-center gap-4 px-5 py-3 text-white text-[15px] hover:bg-white/5 group">
+                  <A2InfoIcon className="w-5 h-5 opacity-50" />
+                  <span>Message info</span>
+                </button>
+                <button onClick={() => onAction('reply')} className="flex items-center gap-4 px-5 py-3 text-white text-[15px] hover:bg-white/5 group">
+                  <Reply className="w-5 h-5 opacity-50" />
+                  <span>Reply</span>
+                </button>
+                <button onClick={() => onAction('copy')} className="flex items-center gap-4 px-5 py-3 text-white text-[15px] hover:bg-white/5 group">
+                  <Copy className="w-5 h-5 opacity-50" />
+                  <span>Copy</span>
+                </button>
+                <button onClick={() => onAction(msg.content?.is_pinned ? 'unpin' : 'pin')} className="flex items-center gap-4 px-5 py-3 text-white text-[15px] hover:bg-white/5 group">
+                  <Pin className={`w-5 h-5 ${msg.content?.is_pinned ? 'text-emerald-500 fill-current' : 'opacity-50'}`} />
+                  <span>{msg.content?.is_pinned ? 'Unpin' : 'Pin'}</span>
+                </button>
+                <div className="h-[1px] bg-white/[0.08] my-1 mx-4" />
+                {isMe && (
+                  <button onClick={() => onAction('delete')} className="flex items-center gap-4 px-5 py-3 text-red-400 text-[15px] hover:bg-red-500/10 group">
+                    <Trash2 className="w-5 h-5 opacity-60" />
+                    <span>Delete for everyone</span>
+                  </button>
+                )}
+                <button onClick={() => onAction('delete_for_me')} className="flex items-center gap-4 px-5 py-3 text-red-400 text-[15px] hover:bg-red-500/10 group">
+                  <Trash2 className="w-5 h-5 opacity-60" />
+                  <span>Delete for me</span>
+                </button>
+              </div>
+            </>
+          )}
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
 import {
-  LogOut, Send, Mic, Phone, X, Reply, Paperclip, Loader2,
-  Trash2, Smile, Search, ArrowDownToLine, File, Settings, Upload, ChevronDown, Calendar, MoreVertical, Pin, Star,
-  Info, Clock, CheckCheck, Check, FileText, Image as ImageIcon, Video as VideoIcon, History
+  Send, Mic, Phone, X, Reply, Paperclip, Loader2,
+  Trash2, Smile, Search, ArrowDownToLine, File, Settings, Upload, ChevronDown, Calendar, MoreVertical, Pin, Star, Copy, Plus
 } from 'lucide-react';
 
-// Inline icon replacements for icons not in this lucide version
-const StarIcon = ({ className, filled }) => (
+const A2InfoIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+  </svg>
+);
+
+const A2CheckCheckIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 12l5 5L20 4"/><path d="M7 12l5 5L25 4"/>
+  </svg>
+);
+
+const A2ClockIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+  </svg>
+);
+
+const A2LogOutIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+  </svg>
+);
+
+const A2StarIcon = ({ className, filled }) => (
   <svg className={className} viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
   </svg>
 );
-const PenIcon = ({ className }) => (
+
+const A2PenIcon = ({ className }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
     <path d="m15 5 4 4"/>
@@ -107,6 +270,32 @@ export default function Chat() {
   const [searchMode, setSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [msgInfoData, setMsgInfoData] = useState(null);
+
+  // Handle mobile back button to close modals/drawers
+  useEffect(() => {
+    const handlePopState = (e) => {
+      if (msgInfoData) {
+        setMsgInfoData(null);
+      } else if (showSettings) {
+        setShowSettings(false);
+      } else if (showStarredVault) {
+        setShowStarredVault(false);
+      }
+    };
+
+    if (msgInfoData || showSettings || showStarredVault) {
+      window.history.pushState({ modalOpen: true }, '', window.location.pathname);
+      window.addEventListener('popstate', handlePopState);
+    }
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      // Clean up history state if modal is closed manually
+      if (!msgInfoData && !showSettings && !showStarredVault && window.history.state?.modalOpen) {
+        // We can't easily go forward, but this is fine for SPA
+      }
+    };
+  }, [msgInfoData, showSettings, showStarredVault]);
 
   const [isHideMode, setIsHideMode] = useState(false);
   const [partnerOnline, setPartnerOnline] = useState(false);
@@ -558,7 +747,10 @@ export default function Chat() {
     const m = contextMenu.msg;
     setContextMenu({ isOpen: false, position: null, msg: null });
     if (!m) return;
-    if (action === 'info') { setMsgInfoData(m); }
+    if (action === 'info') { 
+      console.log("Triggering Message Info for:", m.id);
+      setMsgInfoData(m); 
+    }
     else if (action === 'reply') { setReplyingTo(m); }
     else if (action === 'copy') {
       const t = m.type === 'text' ? (typeof m.content === 'object' ? m.content.text : m.content) : (m.content?.url || m.content);
@@ -710,7 +902,7 @@ export default function Chat() {
       </AnimatePresence>
 
       {contextMenu.isOpen && (
-        <MessageContextMenu
+        <A2MessageContextMenu
           position={contextMenu.position}
           msg={contextMenu.msg}
           isMe={contextMenu.msg.sender_id === user.id}
@@ -729,7 +921,7 @@ export default function Chat() {
           </div>
           <div className="flex items-center gap-1">
             <button onClick={() => setShowSettings(true)} className="icon-btn hover:text-white"><Settings className="w-5 h-5" /></button>
-            <button onClick={logout} className="icon-btn hover:text-red-400"><LogOut className="w-5 h-5" /></button>
+            <button onClick={logout} className="icon-btn hover:text-red-400"><A2LogOutIcon className="w-5 h-5" /></button>
           </div>
         </div>
         <div className="p-4">
@@ -796,10 +988,10 @@ export default function Chat() {
                     onClick={() => setShowStarredVault(true)}
                     className="p-2.5 hover:bg-white/5 rounded-full text-white/40 hover:text-emerald-500 transition-all"
                   >
-                    <StarIcon className="w-5 h-5" />
+                    <A2StarIcon className="w-5 h-5" />
                   </button>
-                  <button onClick={() => setShowSettings(true)} className="icon-btn text-white/40 hover:text-white"><Settings className="w-5 h-5" /></button>
-                  <button onClick={logout} className="icon-btn text-red-500/60 hover:text-red-500"><LogOut className="w-5 h-5" /></button>
+                  <button onClick={() => setShowSettings(true)} className="icon-btn text-white/40 hover:text-white md:hidden"><Settings className="w-5 h-5" /></button>
+                  <button onClick={logout} className="icon-btn text-red-500/60 hover:text-red-500 md:hidden"><A2LogOutIcon className="w-5 h-5" /></button>
                 </div>
 
                 {/* Mobile 3-dot Menu */}
@@ -868,7 +1060,7 @@ export default function Chat() {
                   onClick={logout} 
                   className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-red-500/5 transition-colors"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <A2LogOutIcon className="w-4 h-4" />
                   <span>Logout</span>
                 </button>
               </motion.div>
@@ -1120,7 +1312,7 @@ export default function Chat() {
                   </div>
 
                   {reaction && (
-                    <div className={`absolute -bottom-[14px] left-[-2px] bg-[#202c33] border border-white/[0.1] rounded-full px-2 py-1 text-sm shadow-2xl hover:scale-110 transition-all cursor-pointer z-[60]`}>
+                    <div className={`absolute -bottom-[18px] left-[-2px] bg-[#202c33] border border-white/[0.1] rounded-full px-2 py-1 text-sm shadow-2xl hover:scale-110 transition-all cursor-pointer z-[60]`}>
                       {reaction}
                     </div>
                   )}
@@ -1165,7 +1357,7 @@ export default function Chat() {
                     const starred = messages.filter(m => typeof m.content === 'object' && m.content?.is_starred);
                     if (starred.length === 0) return (
                       <div className="h-full flex flex-col items-center justify-center opacity-30 text-center px-10">
-                        <StarIcon className="w-16 h-16 mb-4" />
+                        <A2StarIcon className="w-16 h-16 mb-4" />
                         <p className="font-bold text-sm uppercase tracking-widest">No starred messages yet</p>
                         <p className="text-xs mt-2 italic font-light">Long press or right-click any message to star it.</p>
                       </div>
@@ -1235,7 +1427,7 @@ export default function Chat() {
           {editingMsg && (
             <div className="mb-3 mx-2 px-4 py-3 bg-[#111] border border-blue-500/30 rounded-2xl flex items-center justify-between shadow-2xl">
               <div className="flex items-center gap-3 border-l-[3px] border-blue-400 pl-3">
-                <PenIcon className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                <A2PenIcon className="w-4 h-4 text-blue-400 flex-shrink-0" />
                 <span className="text-blue-400 text-[11px] font-bold uppercase tracking-wider">Editing message</span>
               </div>
               <button onClick={() => { setEditingMsg(null); setNewMessage(''); }} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/50">
@@ -1498,8 +1690,12 @@ function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate, onClea
       {/* --- Message Info Modal --- */}
       <AnimatePresence>
         {msgInfoData && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setMsgInfoData(null)}>
+          <div className="fixed inset-0 z-[1000000] flex items-center justify-center bg-black/70 backdrop-blur-md p-4" onClick={() => {
+            console.log("Closing Message Info Modal");
+            setMsgInfoData(null);
+          }}>
             <motion.div 
+              onViewportEnter={() => console.log("Message Info Modal Mounted")}
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -1510,7 +1706,7 @@ function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate, onClea
               <div className="p-6 border-b border-white/5 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 bg-emerald-500/10 rounded-2xl text-emerald-400">
-                    <Info className="w-5 h-5" />
+                    <A2InfoIcon className="w-5 h-5" />
                   </div>
                   <h3 className="text-white font-semibold text-lg">Message Info</h3>
                 </div>
@@ -1521,14 +1717,44 @@ function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate, onClea
 
               {/* Body */}
               <div className="p-6 space-y-6">
+                {/* Message Preview */}
+                <div className="flex flex-col items-center justify-center p-3 mb-2">
+                  <div className={`relative px-4 py-3 rounded-2xl bg-emerald-950/30 border border-emerald-500/20 text-white/90 text-sm max-w-full shadow-inner`}>
+                    {msgInfoData.type === 'image' && (
+                      <div className="mb-2 rounded-lg overflow-hidden border border-white/10">
+                         <img src={typeof msgInfoData.content === 'string' ? msgInfoData.content : msgInfoData.content?.url} className="max-w-full max-h-[150px] object-cover" alt="Preview" />
+                      </div>
+                    )}
+                    {msgInfoData.type === 'video' && (
+                      <div className="mb-2 rounded-lg overflow-hidden border border-white/10 bg-black/40 px-3 py-4 flex items-center justify-center">
+                         <File className="w-8 h-8 text-white/40" />
+                      </div>
+                    )}
+                    {msgInfoData.type === 'audio' && (
+                      <div className="mb-2 flex items-center gap-3 text-emerald-400">
+                         <Mic className="w-5 h-5" />
+                         <span>Voice Message</span>
+                      </div>
+                    )}
+                    <p className="whitespace-pre-wrap break-words leading-relaxed select-none">
+                      {msgInfoData.type === 'text' 
+                        ? (typeof msgInfoData.content === 'object' ? msgInfoData.content.text : msgInfoData.content) 
+                        : (msgInfoData.fileName || 'Resource')}
+                    </p>
+                    <div className="mt-1 flex justify-end">
+                       <span className="text-[10px] text-white/30">{format(new Date(msgInfoData.created_at), 'HH:mm')}</span>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Details Grid */}
                 <div className="grid grid-cols-1 gap-4">
                   <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05] flex items-center gap-4">
                     <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
-                      {msgInfoData.type === 'image' ? <ImageIcon className="w-5 h-5" /> : 
-                       msgInfoData.type === 'video' ? <VideoIcon className="w-5 h-5" /> :
+                      {msgInfoData.type === 'image' ? <Upload className="w-5 h-5" /> : 
+                       msgInfoData.type === 'video' ? <File className="w-5 h-5" /> :
                        msgInfoData.type === 'audio' ? <Mic className="w-5 h-5" /> :
-                       <FileText className="w-5 h-5" />}
+                       <File className="w-5 h-5" />}
                     </div>
                     <div>
                       <p className="text-white/40 text-xs font-medium uppercase tracking-wider mb-0.5">Type</p>
@@ -1538,7 +1764,7 @@ function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate, onClea
 
                   <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05] flex items-center gap-4">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${msgInfoData.status === 'read' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/5 text-white/40'}`}>
-                      {msgInfoData.status === 'read' ? <CheckCheck className="w-5 h-5" /> : <Check className="w-5 h-5" />}
+                      {msgInfoData.status === 'read' ? <A2CheckCheckIcon className="w-5 h-5" /> : <div className="text-sm font-bold">✓</div>}
                     </div>
                     <div>
                       <p className="text-white/40 text-xs font-medium uppercase tracking-wider mb-0.5">Status</p>
@@ -1548,11 +1774,19 @@ function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate, onClea
 
                   <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05] flex items-center gap-4">
                     <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400">
-                      <Clock className="w-5 h-5" />
+                      <A2ClockIcon className="w-5 h-5" />
                     </div>
                     <div>
                       <p className="text-white/40 text-xs font-medium uppercase tracking-wider mb-0.5">Sent At</p>
-                      <p className="text-white font-medium">{format(new Date(msgInfoData.created_at), 'PPP p')}</p>
+                      <p className="text-white font-medium">
+                        {(() => {
+                          try {
+                            return format(new Date(msgInfoData.created_at), 'PPP p');
+                          } catch (e) {
+                            return 'Unknown Date';
+                          }
+                        })()}
+                      </p>
                     </div>
                   </div>
                 </div>
