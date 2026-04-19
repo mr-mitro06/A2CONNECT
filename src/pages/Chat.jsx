@@ -1250,8 +1250,8 @@ export default function Chat() {
 
                 <motion.div
                   drag="x"
-                  dragConstraints={{ left: 0, right: 100 }}
-                  dragElastic={{ left: 0, right: 0.3 }}
+                  dragConstraints={{ left: 0, right: 0 }}
+                  dragElastic={{ left: 0, right: 0.5 }}
                   onDragEnd={(e, info) => { 
                     if (info.offset.x > 70) {
                       setReplyingTo(msg);
