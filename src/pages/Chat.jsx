@@ -1025,19 +1025,27 @@ export default function Chat() {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-1 sm:gap-2">
-                {/* Desktop Icons */}
-                <div className="hidden sm:flex items-center gap-2">
-                  <button onClick={() => setSearchMode(true)} className="icon-btn text-white/40 hover:text-white"><Search className="w-5 h-5" /></button>
+              <div className="flex items-center gap-0.5 sm:gap-2">
+                {/* Search - Always available */}
+                <button onClick={() => setSearchMode(true)} className="icon-btn text-white/40 hover:text-white"><Search className="w-5 h-5" /></button>
+                
+                {/* Starred Vault - Always available */}
+                <button 
+                  onClick={() => setShowStarredVault(true)}
+                  className="p-2.5 hover:bg-white/5 rounded-full text-white/40 hover:text-emerald-500 transition-all"
+                >
+                  <A2StarIcon className="w-5 h-5" />
+                </button>
+
+                {/* Desktop/Tablet Only Icons */}
+                <div className="hidden md:flex items-center gap-2">
                   <button className="icon-btn text-white/40 hover:text-white"><Phone className="w-5 h-5" /></button>
-                  <button 
-                    onClick={() => setShowStarredVault(true)}
-                    className="p-2.5 hover:bg-white/5 rounded-full text-white/40 hover:text-emerald-500 transition-all"
-                  >
-                    <A2StarIcon className="w-5 h-5" />
-                  </button>
-                  <button onClick={() => setShowSettings(true)} className="icon-btn text-white/40 hover:text-white md:hidden"><Settings className="w-5 h-5" /></button>
-                  <button onClick={logout} className="icon-btn text-red-500/60 hover:text-red-500 md:hidden"><A2LogOutIcon className="w-5 h-5" /></button>
+                </div>
+
+                {/* Settings & Logout - Specific for Mobile (since sidebar is hidden) */}
+                <div className="flex md:hidden items-center gap-0.5">
+                  <button onClick={() => setShowSettings(true)} className="icon-btn text-white/40 hover:text-white"><Settings className="w-5 h-5" /></button>
+                  <button onClick={logout} className="icon-btn text-red-500/60 hover:text-red-500"><A2LogOutIcon className="w-5 h-5" /></button>
                 </div>
 
                 {/* Mobile 3-dot Menu */}
@@ -1759,14 +1767,14 @@ function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate, onClea
         <motion.div 
           initial={{ scale: 0.9, y: 20 }}
           animate={{ scale: 1, y: 0 }}
-          className="w-full max-w-md glass-panel p-8 rounded-[2.5rem] relative border border-white/10"
+          className="w-full max-w-[340px] glass-panel p-5 rounded-[2rem] relative border border-white/10"
         >
           <button onClick={onClose} className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors">
             <X className="w-6 h-6" />
           </button>
 
-          <h2 className="text-2xl font-bold text-white mb-2">Settings</h2>
-          <p className="text-white/40 mb-8 text-sm">Customize your A2Connect identity</p>
+          <h2 className="text-xl font-bold text-white mb-1">Settings</h2>
+          <p className="text-white/40 mb-6 text-xs italic">Customize your A2Connect identity</p>
 
           <div className="flex flex-col items-center mb-8">
             <div 
@@ -1806,7 +1814,7 @@ function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate, onClea
               <input 
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-white outline-none focus:border-emerald-500/50 transition-all font-medium"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-emerald-500/50 transition-all font-medium text-sm"
                 placeholder="Enter your name"
               />
             </div>
@@ -1816,7 +1824,7 @@ function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate, onClea
               <input 
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-white outline-none focus:border-emerald-500/50 transition-all font-medium"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-emerald-500/50 transition-all font-medium text-sm"
                 placeholder="Enter a private alias"
               />
               <p className="text-[10px] text-white/20 ml-1">Only you can see this nickname locally.</p>
@@ -1826,14 +1834,14 @@ function SettingsModal({ user, partnerName, pNickname, onClose, onUpdate, onClea
               <button 
                 onClick={handleSave}
                 disabled={isSaving}
-                className="w-full py-4 bg-white text-black font-bold rounded-2xl hover:bg-neutral-200 transition-all active:scale-95 disabled:opacity-50"
+                className="w-full py-3 bg-white text-black font-bold rounded-xl hover:bg-neutral-200 transition-all active:scale-95 disabled:opacity-50 text-sm"
               >
                 {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Save Profile Changes'}
               </button>
               
               <button 
                 onClick={() => setShowClearConfirm(true)}
-                className="w-full py-3 text-red-500/80 font-bold text-sm tracking-wide hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all"
+                className="w-full py-2.5 text-red-500/80 font-bold text-xs tracking-wide hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all"
               >
                 Clear Message History
               </button>
