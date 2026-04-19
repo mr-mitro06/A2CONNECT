@@ -1248,48 +1248,34 @@ export default function Chat() {
                   )}
                 </div>
 
-                <div className="relative group/swipe w-full flex items-center">
-                  {/* Visual Swipe Indicator (Reveal on Swipe) */}
-                  <motion.div 
-                    style={{ opacity: 0 }}
-                    className="absolute left-[-45px] text-emerald-500 pointer-events-none transition-all duration-200"
-                    animate={{ 
-                      opacity: 1,
-                      scale: 1.1,
-                      x: 0
-                    }}
-                  >
-                    <Reply className="w-6 h-6" />
-                  </motion.div>
-
-                  <motion.div
-                    drag="x"
-                    dragConstraints={{ left: 0, right: 100 }}
-                    dragElastic={{ left: 0, right: 0.3 }}
-                    onDragEnd={(e, info) => { 
-                      if (info.offset.x > 70) {
-                        setReplyingTo(msg);
-                        setTimeout(() => inputRef.current?.focus(), 50);
-                      } 
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setContextMenu({ isOpen: true, position: { x: e.clientX, y: e.clientY }, msg });
-                    }}
-                    animate={highlightedMsgId === msg.id ? { 
-                      scale: [1, 1.03, 1],
-                      boxShadow: [
-                        isMe ? "0 10px 15px -3px rgba(255,255,255,0.05)" : "0 25px 50px -12px rgba(0,0,0,0.5)",
-                        isMe ? "0 0 30px rgba(255,255,255,0.3)" : "0 0 30px rgba(16,185,129,0.3)",
-                        isMe ? "0 10px 15px -3px rgba(255,255,255,0.05)" : "0 25px 50px -12px rgba(0,0,0,0.5)"
-                      ]
-                    } : {}}
-                    transition={{ duration: 0.8, repeat: 2 }}
-                    className={`relative px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-2xl ${isMe
-                      ? 'rounded-br-[6px] bg-white text-black shadow-lg shadow-white/5'
-                      : 'rounded-bl-[6px] bg-[#1a1a1a] border border-white/[0.04] text-white/90 shadow-2xl'
-                    } text-[15px] leading-snug font-medium z-10 cursor-grab active:cursor-grabbing select-none w-fit max-w-full`}
-                  >
+                <motion.div
+                  drag="x"
+                  dragConstraints={{ left: 0, right: 100 }}
+                  dragElastic={{ left: 0, right: 0.3 }}
+                  onDragEnd={(e, info) => { 
+                    if (info.offset.x > 70) {
+                      setReplyingTo(msg);
+                      setTimeout(() => inputRef.current?.focus(), 50);
+                    } 
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({ isOpen: true, position: { x: e.clientX, y: e.clientY }, msg });
+                  }}
+                  animate={highlightedMsgId === msg.id ? { 
+                    scale: [1, 1.03, 1],
+                    boxShadow: [
+                      isMe ? "0 10px 15px -3px rgba(255,255,255,0.05)" : "0 25px 50px -12px rgba(0,0,0,0.5)",
+                      isMe ? "0 0 30px rgba(255,255,255,0.3)" : "0 0 30px rgba(16,185,129,0.3)",
+                      isMe ? "0 10px 15px -3px rgba(255,255,255,0.05)" : "0 25px 50px -12px rgba(0,0,0,0.5)"
+                    ]
+                  } : {}}
+                  transition={{ duration: 0.8, repeat: 2 }}
+                  className={`relative px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-2xl ${isMe
+                    ? 'rounded-br-[6px] bg-white text-black shadow-lg shadow-white/5'
+                    : 'rounded-bl-[6px] bg-[#1a1a1a] border border-white/[0.04] text-white/90 shadow-2xl'
+                  } text-[15px] leading-snug font-medium z-10 cursor-grab active:cursor-grabbing select-none w-fit max-w-full`}
+                >
                   {isStarred && (
                     <div className={`absolute -top-2 ${isMe ? 'left-2' : 'right-2'} text-yellow-400 text-xs`}>⭐</div>
                   )}
@@ -1395,8 +1381,6 @@ export default function Chat() {
                     </div>
                   )}
                 </motion.div>
-              </div>
-            </div>
             </React.Fragment>
             );
           })}
