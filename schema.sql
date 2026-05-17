@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS public.users (
 INSERT INTO public.users (id, name, online_status) 
 VALUES 
   ('user_abhi', 'Abhi', false),
-  ('user_arya', 'Arya', false)
+  ('user_arya', 'Srinidhi', false)
 ON CONFLICT (id) DO NOTHING;
 
 -- 2. Create Messages Table

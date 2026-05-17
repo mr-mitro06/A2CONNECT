@@ -506,7 +506,7 @@ export default function Chat() {
   if (!user) return <div className="h-screen bg-black" />;
 
   const partnerId = user.id === 'user_abhi' ? 'user_arya' : 'user_abhi';
-  const partnerName = pNickname || (user.id === 'user_abhi' ? 'Arya' : 'Abhi');
+  const partnerName = pNickname || (user.id === 'user_abhi' ? 'Srinidhi' : 'Abhi');
 
   // Draft saving
   useEffect(() => {

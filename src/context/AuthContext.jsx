@@ -5,7 +5,7 @@ const AuthContext = createContext();
 
 const USERS = {
   'abhi123': { id: 'user_abhi', name: 'Abhi', role: 'admin' },
-  'arya123': { id: 'user_arya', name: 'Arya', role: 'admin' }
+  'sree123': { id: 'user_arya', name: 'Srinidhi', role: 'admin' }
 };
 
 export const AuthProvider = ({ children }) => {
